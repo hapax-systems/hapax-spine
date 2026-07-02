@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hapax-spine"
-version = "0.1.0"
+version = "0.1.1"
 description = "The SDLC-runtime mechanism (coord ledger, dispatch policy, capability registry, EDT, quota, gate events) extracted from hapax-council — instance taxonomy injected, not baked."
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2", "pyyaml>=6"]

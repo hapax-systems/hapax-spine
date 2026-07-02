@@ -189,7 +189,7 @@ def _default_members() -> tuple[str, ...]:
 
 def load_edt_knobs(path: Path | None = None) -> EdtKnobs:
     """Load the operator-maintained knobs floor; fail-safe defaults when absent/unreadable."""
-    knobs_path = path or DEFAULT_KNOBS_PATH
+    knobs_path = path or default_config_path("edt-platform-knobs.yaml")
     try:
         raw = yaml.safe_load(knobs_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):

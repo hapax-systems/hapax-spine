@@ -34,7 +34,7 @@ from hapax.spine.route_metadata_schema import (
     ToolAuthorityUse,
 )
 
-from hapax.spine._config import default_config_path
+from hapax.spine._config import default_config_path, resolve_config_path
 
 # Injected via HAPAX_SPINE_CONFIG_DIR (was council-root-relative before the extraction). Import-safe:
 # a sentinel Path when unconfigured, so `from ... import PLATFORM_CAPABILITY_REGISTRY` never raises.
@@ -1189,13 +1189,13 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 
 def load_platform_capability_registry(
-    path: Path = PLATFORM_CAPABILITY_REGISTRY,
+    path: Path | None = None,
     *,
     receipt_dir: Path | None = None,
     now: datetime | None = None,
 ) -> PlatformCapabilityRegistry:
     """Load the platform capability registry, failing closed on malformed data."""
-
+    path = resolve_config_path(path, "platform-capability-registry.json")
     try:
         registry = PlatformCapabilityRegistry.model_validate(_load_json_object(path))
         effective_receipt_dir = receipt_dir or _receipt_dir_from_env()
