@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol, Self, TypeVar
 
-from shared.jsonl_append import append_jsonl
+from hapax.spine.jsonl_append import append_jsonl
 
 #: Env var redirecting the canonical coord tree for test isolation / sandboxed
 #: tools. Production leaves it unset; the default is a user-writable cache path.
@@ -882,7 +882,7 @@ def provision_coord_tree(
     is not writable, e.g. the legacy root-owned ``/var/lib/hapax/coord`` default
     that uid 1000 could never provision.
     """
-    from shared.governance.coord_capabilities import load_or_create_key
+    from hapax.spine.coord_capabilities import load_or_create_key
 
     base = Path(base_dir) if base_dir is not None else coord_base_dir()
     gdir = Path(grant_dir) if grant_dir is not None else default_grant_dir()

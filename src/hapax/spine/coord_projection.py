@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from shared.coord_event_log import (
+from hapax.spine.coord_event_log import (
     AppendReceipt,
     CoordEvent,
     CoordWriter,
@@ -42,7 +42,7 @@ from shared.coord_event_log import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from shared.coord_event_log import CoordEventLog, ReplayResult
+    from hapax.spine.coord_event_log import CoordEventLog, ReplayResult
 
 # --- canonical coord event types ---------------------------------------------
 CANON_STAGE_TRANSITION = "sdlc.stage_transition"

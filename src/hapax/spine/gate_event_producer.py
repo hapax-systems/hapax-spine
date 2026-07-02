@@ -30,8 +30,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from shared.gate_log import GateEvent
-from shared.route_metadata_schema import (
+from hapax.spine.gate_log import GateEvent
+from hapax.spine.route_metadata_schema import (
     ContextBreadth,
     DemandVector,
     LearningEligibility,
@@ -41,7 +41,7 @@ from shared.route_metadata_schema import (
     TaskDemand,
     stable_payload_hash,
 )
-from shared.sdlc_router import REQUIREMENT_VECTOR_DIMENSIONS
+from hapax.spine.sdlc_router import REQUIREMENT_VECTOR_DIMENSIONS
 
 # --- the live routing-class taxonomy (frozen-11 today; v2 expansion is unlanded) ---------
 # The producer is N-agnostic: GateEvent.routing_class is a bare string. To keep the EDT

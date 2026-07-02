@@ -19,7 +19,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from shared.platform_capability_receipts import (
+from hapax.spine.platform_capability_receipts import (
     DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR,
     PLATFORM_CAPABILITY_RECEIPT_DIR_ENV,
     EvidenceStatus,
@@ -27,7 +27,7 @@ from shared.platform_capability_receipts import (
     load_platform_capability_receipts,
     receipt_reference,
 )
-from shared.route_metadata_schema import (
+from hapax.spine.route_metadata_schema import (
     BenchmarkCoverage,
     FixedRouteOverhead,
     LocalCalibrationProvenance,

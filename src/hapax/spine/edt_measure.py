@@ -52,9 +52,9 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from shared.dispatcher_policy import DimensionalScore, _dimension_score
-from shared.platform_capability_receipts import EvidenceStatus, PlatformCapabilityReceipt
-from shared.platform_capability_registry import (
+from hapax.spine.dispatcher_policy import DimensionalScore, _dimension_score
+from hapax.spine.platform_capability_receipts import EvidenceStatus, PlatformCapabilityReceipt
+from hapax.spine.platform_capability_registry import (
     REQUIRED_ROUTE_IDS,
     AuthorityCeiling,
     CapacityPool,

@@ -20,11 +20,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, model_validator
 
-from shared.platform_capability_receipts import (
+from hapax.spine.platform_capability_receipts import (
     DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR,
     PLATFORM_CAPABILITY_RECEIPT_DIR_ENV,
 )
-from shared.platform_capability_registry import (
+from hapax.spine.platform_capability_registry import (
     PLATFORM_CAPABILITY_REGISTRY,
     Effort,
     PlatformCapabilityRegistry,
@@ -37,7 +37,7 @@ from shared.platform_capability_registry import (
     load_platform_capability_registry,
     normalize_route_id,
 )
-from shared.quota_spend_ledger import (
+from hapax.spine.quota_spend_ledger import (
     QUOTA_SPEND_LEDGER_LIVE_ENV,
     PaidRouteRequest,
     QuotaSpendLedger,
@@ -48,7 +48,7 @@ from shared.quota_spend_ledger import (
     load_quota_spend_ledger_resolved,
     subscription_quota_state_for_route,
 )
-from shared.route_metadata_schema import (
+from hapax.spine.route_metadata_schema import (
     DemandVector,
     FreshnessState,
     RouteMetadataAssessment,

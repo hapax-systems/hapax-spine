@@ -18,9 +18,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from shared.affordance import ActivationState
-from shared.gate_log import GateEvent, read_gate_events
-from shared.platform_capability_registry import SupplyVector
+from hapax.spine.affordance import ActivationState
+from hapax.spine.gate_log import GateEvent, read_gate_events
+from hapax.spine.platform_capability_registry import SupplyVector
 
 DEFAULT_SDLC_ROUTER_STATE = Path(
     os.environ.get(
