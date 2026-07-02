@@ -52,8 +52,12 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from hapax.spine._config import default_config_path
 from hapax.spine.dispatcher_policy import DimensionalScore, _dimension_score
-from hapax.spine.platform_capability_receipts import EvidenceStatus, PlatformCapabilityReceipt
+from hapax.spine.platform_capability_receipts import (
+    EvidenceStatus,
+    PlatformCapabilityReceipt,
+)
 from hapax.spine.platform_capability_registry import (
     REQUIRED_ROUTE_IDS,
     AuthorityCeiling,
@@ -103,7 +107,7 @@ DEFAULT_DEPTH_CAP = 20
 # Anchored to the module (repo root), NOT cwd-relative: score_edt(registry) must find the shipped
 # config from ANY working directory — a cwd-relative default would silently fall back to the
 # 8-member default set and DROP the operator's declared members (cohere/hf), blinding the D0 canary.
-DEFAULT_KNOBS_PATH = Path(__file__).resolve().parent.parent / "config" / "edt-platform-knobs.yaml"
+DEFAULT_KNOBS_PATH = default_config_path("edt-platform-knobs.yaml")
 
 #: The 14 REQUIRED CapabilityScores dimensions, in declared order.
 REQUIRED_CAPABILITY_DIMS: tuple[str, ...] = (
@@ -178,7 +182,9 @@ class EdtKnobs:
 
 
 def _default_members() -> tuple[str, ...]:
-    return tuple(sorted({route_id.split(".")[0] for route_id in REQUIRED_ROUTE_IDS} | {"gemini"}))
+    return tuple(
+        sorted({route_id.split(".")[0] for route_id in REQUIRED_ROUTE_IDS} | {"gemini"})
+    )
 
 
 def load_edt_knobs(path: Path | None = None) -> EdtKnobs:
@@ -210,12 +216,16 @@ def load_edt_knobs(path: Path | None = None) -> EdtKnobs:
     depth_cap = raw.get("depth_cap", DEFAULT_DEPTH_CAP)
     depth_cap = (
         int(depth_cap)
-        if isinstance(depth_cap, int) and not isinstance(depth_cap, bool) and depth_cap > 0
+        if isinstance(depth_cap, int)
+        and not isinstance(depth_cap, bool)
+        and depth_cap > 0
         else DEFAULT_DEPTH_CAP
     )
 
     phantoms_raw = raw.get("retired_phantoms")
-    phantoms = tuple(str(p) for p in phantoms_raw) if isinstance(phantoms_raw, list) else ()
+    phantoms = (
+        tuple(str(p) for p in phantoms_raw) if isinstance(phantoms_raw, list) else ()
+    )
 
     return EdtKnobs(
         expected_platform_set=expected_set,
@@ -365,7 +375,9 @@ class _FreshWeightedScore:
     evidence_refs: tuple[str, ...]
 
 
-def _freshness_factor(observed_at: datetime | None, stale_after: str, now: datetime) -> float:
+def _freshness_factor(
+    observed_at: datetime | None, stale_after: str, now: datetime
+) -> float:
     if observed_at is None:
         return 0.0
     try:
@@ -451,7 +463,9 @@ def _fit_classes(route: PlatformCapabilityRoute) -> frozenset[str]:
     return frozenset(fit & set(ROUTING_CLASSES))
 
 
-def _d4_signatures_for(route: PlatformCapabilityRoute) -> Mapping[str, tuple[str, ...]] | None:
+def _d4_signatures_for(
+    route: PlatformCapabilityRoute,
+) -> Mapping[str, tuple[str, ...]] | None:
     # Pre-STEP-0 there are no per-cell interaction records, so the slicing test stays inert.
     return None
 
@@ -479,7 +493,8 @@ def _mirrored_quota_unobservable_nonblocking(
     if route.capacity_pool is CapacityPool.SUBSCRIPTION_QUOTA:
         return True
     return (
-        route.capacity_pool in {CapacityPool.API_PAID_SPEND, CapacityPool.BOOTSTRAP_BUDGET}
+        route.capacity_pool
+        in {CapacityPool.API_PAID_SPEND, CapacityPool.BOOTSTRAP_BUDGET}
         and route.telemetry.quota_source.value == "ledger"
     )
 
@@ -495,7 +510,9 @@ def _blend_with_pending(base_density: float, equivalence_pending: int) -> float:
     return min(1.0, base_density + 0.1 * equivalence_pending)
 
 
-def _variant_for_leaf(leaf_key: str, route: PlatformCapabilityRoute) -> DescriptorVariant | None:
+def _variant_for_leaf(
+    leaf_key: str, route: PlatformCapabilityRoute
+) -> DescriptorVariant | None:
     """The DescriptorVariant a ``route_id#variant_id`` leaf names, or None for a base-route leaf."""
     if "#" not in leaf_key:
         return None
@@ -518,7 +535,8 @@ def _resolve_d1(
     meta_modes = set(_optional_meta_modes(_variant_for_leaf(leaf_key, route)))
     features = _platform_features(route)
     deduped, ran = slicing_test_dedupe(
-        sorted(cells | meta_modes | set(features)), policy_signatures=_d4_signatures_for(route)
+        sorted(cells | meta_modes | set(features)),
+        policy_signatures=_d4_signatures_for(route),
     )
     cell_count = len(deduped)
     return D1Descriptor(
@@ -532,7 +550,9 @@ def _resolve_d1(
     )
 
 
-def _resolve_d2(leaf_key: str, route: PlatformCapabilityRoute, now: datetime) -> D2Fitness:
+def _resolve_d2(
+    leaf_key: str, route: PlatformCapabilityRoute, now: datetime
+) -> D2Fitness:
     raw: Mapping[str, Any] = route.capability_scores.model_dump()
     done = 0.0
     required = 0
@@ -580,7 +600,10 @@ def _removable_quota_reasons(route: PlatformCapabilityRoute) -> frozenset[str]:
     is allowed to clear given a quota-unobservable receipt. A route blocked for ANY OTHER reason
     stays blocked — the quota path must not unblock it."""
     reasons = {"account_live_quota_receipt_absent", "quota_telemetry_unknown"}
-    if route.capacity_pool in {CapacityPool.API_PAID_SPEND, CapacityPool.BOOTSTRAP_BUDGET}:
+    if route.capacity_pool in {
+        CapacityPool.API_PAID_SPEND,
+        CapacityPool.BOOTSTRAP_BUDGET,
+    }:
         reasons.add("provider_budget_receipt_absent")
     return frozenset(reasons)
 
@@ -614,12 +637,16 @@ def _resolve_d4(
             unavailability_reason = "; ".join(route.blocked_reasons)
         else:
             unavailability_reason = "route_state_blocked"
-    axes = _descriptor_axes(descriptor)  # THIS leaf's own 4 axes (leaf-specific, not route-union)
+    axes = _descriptor_axes(
+        descriptor
+    )  # THIS leaf's own 4 axes (leaf-specific, not route-union)
     fit = _fit_classes(route)
     cells_present = len(fit) * len(axes) if available else 0
     interaction_records: list[str] = []
     leaf_variant = _variant_for_leaf(leaf_key, route)
-    ref = getattr(leaf_variant, "interaction_record_ref", None) if leaf_variant else None
+    ref = (
+        getattr(leaf_variant, "interaction_record_ref", None) if leaf_variant else None
+    )
     if ref:
         interaction_records.append(str(ref))
     return D4UsePolicy(
@@ -634,7 +661,9 @@ def _resolve_d4(
 
 def _resolve_d5(leaf_key: str, route: PlatformCapabilityRoute) -> D5Boundaries:
     fit = _fit_classes(route)
-    equivalence_pending = len(getattr(route.quality_envelope, "equivalence_pending", ()) or ())
+    equivalence_pending = len(
+        getattr(route.quality_envelope, "equivalence_pending", ()) or ()
+    )
     return D5Boundaries(
         leaf=leaf_key,
         cells_present=len(fit),
@@ -672,7 +701,9 @@ def score_variant_leaf(
     d1 = _resolve_d1(leaf_key, descriptor, route)
     d2 = _resolve_d2(leaf_key, route, now)
     d3 = _resolve_d3(leaf_key, route)
-    d4 = _resolve_d4(leaf_key, descriptor, route, receipt, variant_blocked=variant_blocked)
+    d4 = _resolve_d4(
+        leaf_key, descriptor, route, receipt, variant_blocked=variant_blocked
+    )
     d5 = _resolve_d5(leaf_key, route)
 
     # LAYER 1 — specificity_ratio (cap-scaled D1, fresh-weighted D2 fraction, D5 boundary fraction).
@@ -699,7 +730,9 @@ def score_variant_leaf(
     evidence_health = _blend_evidence_health(freshness_ok, evidence_ref_density)
 
     base_provisional = len(d2.provisional_dims) / d2.required if d2.required else 0.0
-    provisional_density = round(_blend_with_pending(base_provisional, d5.equivalence_pending), 6)
+    provisional_density = round(
+        _blend_with_pending(base_provisional, d5.equivalence_pending), 6
+    )
 
     # provisional evidence (confidence-1 dims) depresses the fresh-weighted D2 component (via the
     # confidence/5 factor in D2.done) and thus the specificity_ratio — flag it so the cap is legible.
@@ -767,13 +800,19 @@ def score_platform(
     while ``observed_platform_count``/``omitted_platforms`` are OPTIONAL registry-global context that
     ``score_edt`` supplies for the full D0 canary (a standalone call defaults them to 0/()."""
     platform_ratio = _min_optional([leaf.specificity_ratio for leaf in leaves])
-    platform_completeness = _min_optional([leaf.slice_policy_completeness for leaf in leaves])
+    platform_completeness = _min_optional(
+        [leaf.slice_policy_completeness for leaf in leaves]
+    )
     platform_evidence = _min_optional([leaf.evidence_health for leaf in leaves])
     platform_provisional = _max_optional([leaf.provisional_density for leaf in leaves])
 
     depth_ranks = {"trivial": 0, "bounded": 1, "rich": 2}
     rank_to_class = {rank: name for name, rank in depth_ranks.items()}
-    leaf_ranks = [depth_ranks.get(leaf.d1.depth_class, 0) for leaf in leaves if leaf.d1 is not None]
+    leaf_ranks = [
+        depth_ranks.get(leaf.d1.depth_class, 0)
+        for leaf in leaves
+        if leaf.d1 is not None
+    ]
     depth_class = rank_to_class[min(leaf_ranks)] if leaf_ranks else "trivial"
 
     any_available = any(leaf.d4.available for leaf in leaves if leaf.d4 is not None)
@@ -829,11 +868,15 @@ def score_edt(
     # canary a true missing-capability signal (e.g. gemini: declared, not retired, not observed).
     omitted_platforms = tuple(
         sorted(
-            set(knobs.expected_platform_members) - observed_platforms - set(knobs.retired_phantoms)
+            set(knobs.expected_platform_members)
+            - observed_platforms
+            - set(knobs.retired_phantoms)
         )
     )
 
-    def _receipt_for(route: PlatformCapabilityRoute) -> PlatformCapabilityReceipt | None:
+    def _receipt_for(
+        route: PlatformCapabilityRoute,
+    ) -> PlatformCapabilityReceipt | None:
         # The repository loader (load_platform_capability_receipts) keys receipts by PLATFORM and
         # carries route coverage in receipt.routes — match that shape, not a route_id key.
         if not receipts:
@@ -868,9 +911,13 @@ def score_edt(
             omitted_platforms=omitted_platforms,
         )
 
-    measures = [_measure(platform, leaves) for platform, leaves in leaves_by_platform.items()]
+    measures = [
+        _measure(platform, leaves) for platform, leaves in leaves_by_platform.items()
+    ]
     # D0 canary: an EXPECTED-but-absent platform surfaces as an explicit FAILING measure with no
     # leaves (not silently dropped) — the omitted-cap floor made legible to downstream consumers.
     measures.extend(_measure(platform, []) for platform in omitted_platforms)
-    measures.sort(key=lambda m: (platform_depth_rank(m), m.platform_ratio or 0.0), reverse=True)
+    measures.sort(
+        key=lambda m: (platform_depth_rank(m), m.platform_ratio or 0.0), reverse=True
+    )
     return tuple(measures)

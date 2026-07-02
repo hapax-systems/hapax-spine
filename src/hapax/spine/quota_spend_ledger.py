@@ -18,15 +18,19 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-QUOTA_SPEND_LEDGER_FIXTURES = REPO_ROOT / "config" / "quota-spend-ledger-fixtures.json"
+from hapax.spine._config import default_config_path
+
+# Injected via HAPAX_SPINE_CONFIG_DIR (was council-root-relative before the extraction). Import-safe sentinel.
+QUOTA_SPEND_LEDGER_FIXTURES = default_config_path("quota-spend-ledger-fixtures.json")
 
 QUOTA_SPEND_LEDGER_LIVE_ENV = "HAPAX_QUOTA_SPEND_LEDGER_LIVE"
 DEFAULT_QUOTA_SPEND_LEDGER_LIVE = (
     Path.home() / ".cache" / "hapax" / "orchestration" / "quota-spend-ledger-live.json"
 )
 
-PAID_CAPACITY_POOLS = frozenset({"api_paid_spend", "bootstrap_budget", "incident_override"})
+PAID_CAPACITY_POOLS = frozenset(
+    {"api_paid_spend", "bootstrap_budget", "incident_override"}
+)
 RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES = frozenset({"glmcp.review.direct"})
 RECEIPT_BOUNDED_SUBSCRIPTION_PROVIDERS = {
     "glmcp.review.direct": "z_ai-glm-coding-plan",
@@ -37,7 +41,9 @@ GLMCP_ADMISSION_TOOL_ENDPOINTS = {
 }
 GLMCP_ADMISSION_SUPPORTED_TOOLS = frozenset(GLMCP_ADMISSION_TOOL_ENDPOINTS)
 GLMCP_ADMISSION_ENDPOINTS = frozenset(
-    endpoint for endpoints in GLMCP_ADMISSION_TOOL_ENDPOINTS.values() for endpoint in endpoints
+    endpoint
+    for endpoints in GLMCP_ADMISSION_TOOL_ENDPOINTS.values()
+    for endpoint in endpoints
 )
 # Mirrors scripts/hapax-quota-telemetry-writer and the direct
 # scripts/hapax-glmcp-reviewer route metadata.
@@ -237,7 +243,9 @@ class TransitionBudget(StrictModel):
     auto_top_up_allowed: Literal[False] = False
     subscription_path_checked_at: datetime | None = None
     reason_subscription_path_not_used: str | None = None
-    steady_state_replacement: SteadyStateReplacement = Field(default_factory=SteadyStateReplacement)
+    steady_state_replacement: SteadyStateReplacement = Field(
+        default_factory=SteadyStateReplacement
+    )
     ledger_owner: str | None = None
     dashboard_visibility: Literal["required"] = "required"
     lifecycle_state: BudgetLifecycleState = BudgetLifecycleState.ACTIVE
@@ -251,20 +259,30 @@ class TransitionBudget(StrictModel):
         if self.capacity_pool.value not in PAID_CAPACITY_POOLS:
             raise ValueError(f"{self.budget_id} must use a paid/API capacity pool")
         if self.lifecycle_state is BudgetLifecycleState.ACTIVE:
-            if self.total_cap_usd <= 0 or self.per_task_cap_usd <= 0 or self.daily_cap_usd <= 0:
-                raise ValueError(f"{self.budget_id} active budgets require positive caps")
+            if (
+                self.total_cap_usd <= 0
+                or self.per_task_cap_usd <= 0
+                or self.daily_cap_usd <= 0
+            ):
+                raise ValueError(
+                    f"{self.budget_id} active budgets require positive caps"
+                )
             if self.subscription_path_checked_at is None:
                 raise ValueError(
                     f"{self.budget_id} active budgets require subscription path review"
                 )
-            _require_aware(self.subscription_path_checked_at, "subscription_path_checked_at")
+            _require_aware(
+                self.subscription_path_checked_at, "subscription_path_checked_at"
+            )
             if not self.reason_subscription_path_not_used:
                 raise ValueError(
                     f"{self.budget_id} active budgets require subscription-path rationale"
                 )
         if self.capacity_pool is CapacityPool.BOOTSTRAP_BUDGET:
             if not self.steady_state_replacement.complete():
-                raise ValueError(f"{self.budget_id} bootstrap budgets require replacement plan")
+                raise ValueError(
+                    f"{self.budget_id} bootstrap budgets require replacement plan"
+                )
         _reject_private_or_identity_refs(
             _refs(
                 self.budget_id,
@@ -331,34 +349,54 @@ class SpendReceipt(StrictModel):
         if self.reconcile_by is not None:
             _require_aware(self.reconcile_by, "reconcile_by")
             if self.reconcile_by <= self.created_at:
-                raise ValueError(f"{self.spend_id} reconcile_by must be after created_at")
+                raise ValueError(
+                    f"{self.spend_id} reconcile_by must be after created_at"
+                )
         if self.capacity_pool.value in PAID_CAPACITY_POOLS:
             if not self.budget_id:
                 raise ValueError(f"{self.spend_id} paid/API spend requires budget_id")
             if self.estimated_cost_usd is None and self.actual_cost_usd is None:
-                raise ValueError(f"{self.spend_id} spend requires estimated or actual cost")
+                raise ValueError(
+                    f"{self.spend_id} spend requires estimated or actual cost"
+                )
         if self.actual_cost_usd is None and self.estimated_cost_usd is not None:
             if self.reconcile_by is None:
-                raise ValueError(f"{self.spend_id} estimated spend requires reconcile_by")
+                raise ValueError(
+                    f"{self.spend_id} estimated spend requires reconcile_by"
+                )
         if self.actual_cost_usd is not None and self.cap_remaining_usd is None:
-            raise ValueError(f"{self.spend_id} reconciled spend requires cap_remaining_usd")
+            raise ValueError(
+                f"{self.spend_id} reconciled spend requires cap_remaining_usd"
+            )
         if self.reconciled_at is not None:
             _require_aware(self.reconciled_at, "reconciled_at")
         if self.reconciliation_state is SpendReconciliationState.PENDING:
             if self.actual_cost_usd is not None:
-                raise ValueError(f"{self.spend_id} actual spend requires reconciled state")
+                raise ValueError(
+                    f"{self.spend_id} actual spend requires reconciled state"
+                )
             if self.reconciled_at is not None or self.reconciliation_reason:
-                raise ValueError(f"{self.spend_id} pending spend cannot carry reconciliation")
+                raise ValueError(
+                    f"{self.spend_id} pending spend cannot carry reconciliation"
+                )
         elif self.reconciliation_state is SpendReconciliationState.RECONCILED:
             if self.actual_cost_usd is None:
-                raise ValueError(f"{self.spend_id} reconciled spend requires actual cost")
+                raise ValueError(
+                    f"{self.spend_id} reconciled spend requires actual cost"
+                )
             if self.reconciled_at is None or not self.reconciliation_reason:
-                raise ValueError(f"{self.spend_id} reconciled spend requires review evidence")
+                raise ValueError(
+                    f"{self.spend_id} reconciled spend requires review evidence"
+                )
         elif self.reconciliation_state is SpendReconciliationState.FROZEN_REFUSED:
             if self.actual_cost_usd is not None:
-                raise ValueError(f"{self.spend_id} frozen/refused spend cannot claim actual cost")
+                raise ValueError(
+                    f"{self.spend_id} frozen/refused spend cannot claim actual cost"
+                )
             if self.reconciled_at is None or not self.reconciliation_reason:
-                raise ValueError(f"{self.spend_id} frozen/refused spend requires review evidence")
+                raise ValueError(
+                    f"{self.spend_id} frozen/refused spend requires review evidence"
+                )
         _reject_private_or_identity_refs(
             _refs(
                 self.spend_id,
@@ -419,18 +457,34 @@ class ProviderDependencyRecord(StrictModel):
         _require_aware(self.first_seen_at, "first_seen_at")
         _require_aware(self.review_by, "review_by")
         if self.review_by <= self.first_seen_at:
-            raise ValueError(f"{self.dependency_id} review_by must be after first_seen_at")
+            raise ValueError(
+                f"{self.dependency_id} review_by must be after first_seen_at"
+            )
         if self.last_reviewed_at is not None:
             _require_aware(self.last_reviewed_at, "last_reviewed_at")
-        if self.dependency_state is DependencyState.REPLACED and not self.replacement_route_id:
-            raise ValueError(f"{self.dependency_id} replaced dependencies need replacement route")
-        if self.dependency_state is not DependencyState.ACTIVE and self.last_reviewed_at is None:
-            raise ValueError(f"{self.dependency_id} closed dependencies need review timestamp")
+        if (
+            self.dependency_state is DependencyState.REPLACED
+            and not self.replacement_route_id
+        ):
+            raise ValueError(
+                f"{self.dependency_id} replaced dependencies need replacement route"
+            )
+        if (
+            self.dependency_state is not DependencyState.ACTIVE
+            and self.last_reviewed_at is None
+        ):
+            raise ValueError(
+                f"{self.dependency_id} closed dependencies need review timestamp"
+            )
         if self.bootstrap_dependency:
             if self.capacity_pool is not CapacityPool.BOOTSTRAP_BUDGET:
-                raise ValueError(f"{self.dependency_id} bootstrap dependencies need bootstrap pool")
+                raise ValueError(
+                    f"{self.dependency_id} bootstrap dependencies need bootstrap pool"
+                )
             if not self.transition_budget_id:
-                raise ValueError(f"{self.dependency_id} bootstrap dependencies need budget ref")
+                raise ValueError(
+                    f"{self.dependency_id} bootstrap dependencies need budget ref"
+                )
         _reject_private_or_identity_refs(
             _refs(
                 self.dependency_id,
@@ -454,7 +508,9 @@ class ArtifactProvenanceRecord(StrictModel):
     produced_under_budget_id: str | None = None
     source_spend_receipt_ids: tuple[str, ...] = Field(default=())
     support_artifact_authority: SupportArtifactAuthority
-    artifact_disposition: SupportArtifactDisposition = SupportArtifactDisposition.PENDING_REVIEW
+    artifact_disposition: SupportArtifactDisposition = (
+        SupportArtifactDisposition.PENDING_REVIEW
+    )
     accepted_by_route_id: str | None = None
     accepted_at: datetime | None = None
     disposition_reviewed_at: datetime | None = None
@@ -468,9 +524,14 @@ class ArtifactProvenanceRecord(StrictModel):
             _require_aware(self.accepted_at, "accepted_at")
         if self.disposition_reviewed_at is not None:
             _require_aware(self.disposition_reviewed_at, "disposition_reviewed_at")
-        if self.support_artifact_authority is SupportArtifactAuthority.ACCEPTED_AUTHORITATIVE:
+        if (
+            self.support_artifact_authority
+            is SupportArtifactAuthority.ACCEPTED_AUTHORITATIVE
+        ):
             if not self.accepted_by_route_id or self.accepted_at is None:
-                raise ValueError(f"{self.provenance_id} accepted artifacts require acceptor")
+                raise ValueError(
+                    f"{self.provenance_id} accepted artifacts require acceptor"
+                )
             if self.artifact_disposition is not SupportArtifactDisposition.ACCEPTED:
                 raise ValueError(
                     f"{self.provenance_id} accepted artifacts need accepted disposition"
@@ -489,7 +550,9 @@ class ArtifactProvenanceRecord(StrictModel):
             SupportArtifactDisposition.RETIRED,
         }:
             if self.disposition_reviewed_at is None or not self.disposition_reason:
-                raise ValueError(f"{self.provenance_id} closed artifacts require disposition")
+                raise ValueError(
+                    f"{self.provenance_id} closed artifacts require disposition"
+                )
         if (
             self.produced_under_budget_id
             and self.support_artifact_authority is SupportArtifactAuthority.NONE
@@ -541,7 +604,10 @@ class RenewalRecord(StrictModel):
         if self.subscription_renewal_at is not None:
             _require_aware(self.subscription_renewal_at, "subscription_renewal_at")
         _require_aware(self.hard_expiry_review_at, "hard_expiry_review_at")
-        if self.capacity_pool.value in PAID_CAPACITY_POOLS and self.recurring_cost_usd is None:
+        if (
+            self.capacity_pool.value in PAID_CAPACITY_POOLS
+            and self.recurring_cost_usd is None
+        ):
             raise ValueError(f"{self.renewal_id} paid/API renewals require cost marker")
         _reject_private_or_identity_refs(
             _refs(
@@ -574,7 +640,9 @@ class QuotaSnapshot(StrictModel):
         if self.fresh_until is not None:
             _require_aware(self.fresh_until, "fresh_until")
             if self.fresh_until <= self.captured_at:
-                raise ValueError(f"{self.snapshot_id} fresh_until must be after captured_at")
+                raise ValueError(
+                    f"{self.snapshot_id} fresh_until must be after captured_at"
+                )
         _reject_private_or_identity_refs(
             [
                 self.snapshot_id,
@@ -600,7 +668,9 @@ class PaidRouteRequest(StrictModel):
     @model_validator(mode="after")
     def _paid_route_request_contract(self) -> Self:
         if self.capacity_pool.value not in PAID_CAPACITY_POOLS:
-            raise ValueError("paid route eligibility can only evaluate paid/API capacity pools")
+            raise ValueError(
+                "paid route eligibility can only evaluate paid/API capacity pools"
+            )
         _reject_private_or_identity_refs(
             [
                 self.route_id,
@@ -648,16 +718,26 @@ class SpendGateDecisionRecord(StrictModel):
             raise ValueError(f"{self.decision_id} spend gates require paid/API pool")
         if self.eligible:
             if self.decision_state is not SpendGateDecisionState.ELIGIBLE_ACTIVE_BUDGET:
-                raise ValueError(f"{self.decision_id} eligible decisions need eligible state")
+                raise ValueError(
+                    f"{self.decision_id} eligible decisions need eligible state"
+                )
             if not self.budget_id:
-                raise ValueError(f"{self.decision_id} eligible decisions require budget_id")
+                raise ValueError(
+                    f"{self.decision_id} eligible decisions require budget_id"
+                )
             if self.blocking_reasons:
-                raise ValueError(f"{self.decision_id} eligible decisions cannot have blockers")
+                raise ValueError(
+                    f"{self.decision_id} eligible decisions cannot have blockers"
+                )
         else:
             if self.decision_state is SpendGateDecisionState.ELIGIBLE_ACTIVE_BUDGET:
-                raise ValueError(f"{self.decision_id} refused decisions cannot use eligible state")
+                raise ValueError(
+                    f"{self.decision_id} refused decisions cannot use eligible state"
+                )
             if not self.blocking_reasons:
-                raise ValueError(f"{self.decision_id} refused decisions require blockers")
+                raise ValueError(
+                    f"{self.decision_id} refused decisions require blockers"
+                )
         _reject_private_or_identity_refs(
             _refs(
                 self.decision_id,
@@ -730,20 +810,30 @@ class QuotaSpendLedger(StrictModel):
             [self.ledger_id, *self.generated_from, *self.evidence_refs],
             "quota spend ledger",
         )
-        _require_unique("budget_id", [budget.budget_id for budget in self.transition_budgets])
-        _require_unique("spend_id", [receipt.spend_id for receipt in self.spend_receipts])
         _require_unique(
-            "decision_id", [decision.decision_id for decision in self.spend_gate_decisions]
+            "budget_id", [budget.budget_id for budget in self.transition_budgets]
         )
         _require_unique(
-            "dependency_id", [dependency.dependency_id for dependency in self.provider_dependencies]
+            "spend_id", [receipt.spend_id for receipt in self.spend_receipts]
         )
         _require_unique(
-            "provenance_id", [record.provenance_id for record in self.artifact_provenance]
+            "decision_id",
+            [decision.decision_id for decision in self.spend_gate_decisions],
         )
-        _require_unique("renewal_id", [record.renewal_id for record in self.renewal_records])
         _require_unique(
-            "quota snapshot_id", [snapshot.snapshot_id for snapshot in self.quota_snapshots]
+            "dependency_id",
+            [dependency.dependency_id for dependency in self.provider_dependencies],
+        )
+        _require_unique(
+            "provenance_id",
+            [record.provenance_id for record in self.artifact_provenance],
+        )
+        _require_unique(
+            "renewal_id", [record.renewal_id for record in self.renewal_records]
+        )
+        _require_unique(
+            "quota snapshot_id",
+            [snapshot.snapshot_id for snapshot in self.quota_snapshots],
         )
 
         budget_ids = {budget.budget_id for budget in self.transition_budgets}
@@ -759,13 +849,17 @@ class QuotaSpendLedger(StrictModel):
                 dependency.transition_budget_id
                 and dependency.transition_budget_id not in budget_ids
             ):
-                raise ValueError(f"{dependency.dependency_id} references unknown budget")
+                raise ValueError(
+                    f"{dependency.dependency_id} references unknown budget"
+                )
         for provenance in self.artifact_provenance:
             if (
                 provenance.produced_under_budget_id
                 and provenance.produced_under_budget_id not in budget_ids
             ):
-                raise ValueError(f"{provenance.provenance_id} references unknown budget")
+                raise ValueError(
+                    f"{provenance.provenance_id} references unknown budget"
+                )
             missing_spends = set(provenance.source_spend_receipt_ids) - spend_ids
             if missing_spends:
                 raise ValueError(
@@ -780,7 +874,9 @@ class QuotaSpendLedger(StrictModel):
                 return budget
         raise QuotaSpendLedgerError(f"missing transition budget {budget_id}")
 
-    def active_paid_budgets(self, now: datetime | None = None) -> tuple[TransitionBudget, ...]:
+    def active_paid_budgets(
+        self, now: datetime | None = None
+    ) -> tuple[TransitionBudget, ...]:
         when = _coerce_now(now)
         return tuple(
             budget
@@ -793,7 +889,9 @@ class QuotaSpendLedger(StrictModel):
 
     def _budget_receipts(self, budget: TransitionBudget) -> tuple[SpendReceipt, ...]:
         return tuple(
-            receipt for receipt in self.spend_receipts if receipt.budget_id == budget.budget_id
+            receipt
+            for receipt in self.spend_receipts
+            if receipt.budget_id == budget.budget_id
         )
 
     def _budget_spent_usd(self, budget: TransitionBudget) -> Decimal:
@@ -802,7 +900,9 @@ class QuotaSpendLedger(StrictModel):
             start=Decimal("0"),
         )
 
-    def _budget_spent_today_usd(self, budget: TransitionBudget, now: datetime) -> Decimal:
+    def _budget_spent_today_usd(
+        self, budget: TransitionBudget, now: datetime
+    ) -> Decimal:
         today = now.date()
         return sum(
             (
@@ -817,13 +917,18 @@ class QuotaSpendLedger(StrictModel):
         remaining = budget.total_cap_usd - self._budget_spent_usd(budget)
         return max(Decimal("0"), remaining)
 
-    def budget_has_overdue_reconciliation(self, budget: TransitionBudget, now: datetime) -> bool:
+    def budget_has_overdue_reconciliation(
+        self, budget: TransitionBudget, now: datetime
+    ) -> bool:
         return any(
-            receipt.is_unreconciled_overdue(now) for receipt in self._budget_receipts(budget)
+            receipt.is_unreconciled_overdue(now)
+            for receipt in self._budget_receipts(budget)
         )
 
     def budget_has_frozen_refused_spend(self, budget: TransitionBudget) -> bool:
-        return any(receipt.is_frozen_refused() for receipt in self._budget_receipts(budget))
+        return any(
+            receipt.is_frozen_refused() for receipt in self._budget_receipts(budget)
+        )
 
     def ledger_stale(self, now: datetime | None = None) -> bool:
         when = _coerce_now(now)
@@ -843,7 +948,9 @@ def evaluate_paid_route_eligibility(
     blocking: list[str] = []
     evidence_refs: list[str] = []
     matching = tuple(
-        budget for budget in ledger.transition_budgets if budget.matches_request(request)
+        budget
+        for budget in ledger.transition_budgets
+        if budget.matches_request(request)
     )
 
     if ledger.ledger_stale(when):
@@ -858,22 +965,29 @@ def evaluate_paid_route_eligibility(
         )
 
     overdue = tuple(
-        budget for budget in matching if ledger.budget_has_overdue_reconciliation(budget, when)
+        budget
+        for budget in matching
+        if ledger.budget_has_overdue_reconciliation(budget, when)
     )
     if overdue:
         blocking.append(
-            "unreconciled spend receipts overdue for " + ", ".join(b.budget_id for b in overdue)
+            "unreconciled spend receipts overdue for "
+            + ", ".join(b.budget_id for b in overdue)
         )
-    frozen = tuple(budget for budget in matching if ledger.budget_has_frozen_refused_spend(budget))
+    frozen = tuple(
+        budget for budget in matching if ledger.budget_has_frozen_refused_spend(budget)
+    )
     if frozen:
         blocking.append(
-            "frozen/refused spend receipts for " + ", ".join(b.budget_id for b in frozen)
+            "frozen/refused spend receipts for "
+            + ", ".join(b.budget_id for b in frozen)
         )
 
     unexpired = tuple(
         budget
         for budget in matching
-        if budget.lifecycle_state is BudgetLifecycleState.ACTIVE and budget.is_unexpired_at(when)
+        if budget.lifecycle_state is BudgetLifecycleState.ACTIVE
+        and budget.is_unexpired_at(when)
     )
     if not unexpired:
         blocking.append("matching TransitionBudget expired or inactive")
@@ -887,7 +1001,9 @@ def evaluate_paid_route_eligibility(
     cap_eligible: list[tuple[TransitionBudget, Decimal]] = []
     for budget in unexpired:
         remaining = ledger._budget_remaining_usd(budget)
-        daily_remaining = budget.daily_cap_usd - ledger._budget_spent_today_usd(budget, when)
+        daily_remaining = budget.daily_cap_usd - ledger._budget_spent_today_usd(
+            budget, when
+        )
         if request.estimated_cost_usd > budget.per_task_cap_usd:
             continue
         if request.estimated_cost_usd > remaining:
@@ -940,7 +1056,9 @@ def build_dashboard(
         record for record in ledger.artifact_provenance if record.waiting_for_review()
     )
     overdue_receipts = tuple(
-        receipt for receipt in ledger.spend_receipts if receipt.is_unreconciled_overdue(when)
+        receipt
+        for receipt in ledger.spend_receipts
+        if receipt.is_unreconciled_overdue(when)
     )
     frozen_receipts = tuple(
         receipt for receipt in ledger.spend_receipts if receipt.is_frozen_refused()
@@ -970,7 +1088,9 @@ def build_dashboard(
         local_resource_state=ledger.local_resource_state,
         overdue_receipts=overdue_receipts,
     )
-    paid_api_route_eligible = paid_state is PaidApiBudgetState.ACTIVE and not ledger_stale
+    paid_api_route_eligible = (
+        paid_state is PaidApiBudgetState.ACTIVE and not ledger_stale
+    )
     return QuotaSpendDashboard(
         quality_preserving_routes_available=ledger.quality_preserving_routes_available,
         blocked_quality_floor_reason=ledger.blocked_quality_floor_reason,
@@ -993,7 +1113,9 @@ def build_dashboard(
             paid_api_route_eligible=paid_api_route_eligible,
         ),
         non_green_states=tuple(non_green),
-        transition_budget_refs=tuple(budget.budget_id for budget in ledger.transition_budgets),
+        transition_budget_refs=tuple(
+            budget.budget_id for budget in ledger.transition_budgets
+        ),
         unreconciled_spend_refs=tuple(receipt.spend_id for receipt in overdue_receipts),
         frozen_spend_refs=tuple(receipt.spend_id for receipt in frozen_receipts),
         provider_dependency_refs=active_dependency_refs,
@@ -1002,17 +1124,23 @@ def build_dashboard(
             ref for record in support_waiting for ref in record.artifact_refs
         ),
         closed_support_artifact_refs=closed_support_artifact_refs,
-        renewal_review_refs=tuple(record.renewal_id for record in ledger.renewal_records),
+        renewal_review_refs=tuple(
+            record.renewal_id for record in ledger.renewal_records
+        ),
     )
 
 
-def load_quota_spend_ledger(path: Path = QUOTA_SPEND_LEDGER_FIXTURES) -> QuotaSpendLedger:
+def load_quota_spend_ledger(
+    path: Path = QUOTA_SPEND_LEDGER_FIXTURES,
+) -> QuotaSpendLedger:
     """Load quota/spend fixtures, failing closed on malformed data."""
 
     try:
         return QuotaSpendLedger.model_validate(_load_json_object(path))
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
-        raise QuotaSpendLedgerError(f"invalid quota/spend ledger at {path}: {exc}") from exc
+        raise QuotaSpendLedgerError(
+            f"invalid quota/spend ledger at {path}: {exc}"
+        ) from exc
 
 
 class ResolvedQuotaSpendLedger(StrictModel):
@@ -1062,7 +1190,9 @@ def load_quota_spend_ledger_resolved(
     )
 
 
-def _paid_api_budget_state(ledger: QuotaSpendLedger, now: datetime) -> PaidApiBudgetState:
+def _paid_api_budget_state(
+    ledger: QuotaSpendLedger, now: datetime
+) -> PaidApiBudgetState:
     if not ledger.transition_budgets:
         return PaidApiBudgetState.NONE
     if ledger.active_paid_budgets(now):
@@ -1077,7 +1207,9 @@ def _paid_api_budget_state(ledger: QuotaSpendLedger, now: datetime) -> PaidApiBu
         for budget in ledger.transition_budgets
         if budget.lifecycle_state is BudgetLifecycleState.ACTIVE
     )
-    if active_lifecycle and all(budget.expires_at <= now for budget in active_lifecycle):
+    if active_lifecycle and all(
+        budget.expires_at <= now for budget in active_lifecycle
+    ):
         return PaidApiBudgetState.EXPIRED
     if active_lifecycle and all(
         ledger._budget_remaining_usd(budget) <= 0 for budget in active_lifecycle
@@ -1092,7 +1224,8 @@ def _bootstrap_dependency_state(
     dependencies = tuple(
         dependency
         for dependency in ledger.provider_dependencies
-        if dependency.dependency_state is DependencyState.ACTIVE and dependency.bootstrap_dependency
+        if dependency.dependency_state is DependencyState.ACTIVE
+        and dependency.bootstrap_dependency
     )
     if not dependencies:
         return BootstrapDependencyState.NONE
@@ -1247,7 +1380,8 @@ def _effective_subscription_quota_state(
 def _subscription_quota_missing_required_fresh_until(snapshot: QuotaSnapshot) -> bool:
     return (
         snapshot.subscription_quota_state is SubscriptionQuotaState.FRESH
-        and _normalize_route_id(snapshot.route_id) in RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES
+        and _normalize_route_id(snapshot.route_id)
+        in RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES
         and snapshot.fresh_until is None
     )
 
@@ -1266,7 +1400,9 @@ def _subscription_quota_missing_required_admission_evidence(
         return True
     if snapshot.provider != expected_provider:
         return True
-    return not any(_is_glmcp_admission_evidence_ref(ref) for ref in snapshot.evidence_refs)
+    return not any(
+        _is_glmcp_admission_evidence_ref(ref) for ref in snapshot.evidence_refs
+    )
 
 
 def _is_glmcp_admission_evidence_ref(ref: str) -> bool:
@@ -1283,7 +1419,9 @@ def _is_glmcp_admission_evidence_ref(ref: str) -> bool:
 def _has_glmcp_admission_tool_endpoint_pair(ref: str) -> bool:
     tool_matches = GLMCP_ADMISSION_SUPPORTED_TOOL_REF_RE.findall(ref)
     endpoint_matches = [
-        endpoint for endpoint in GLMCP_ADMISSION_ENDPOINTS if f":endpoint:{endpoint}:" in ref
+        endpoint
+        for endpoint in GLMCP_ADMISSION_ENDPOINTS
+        if f":endpoint:{endpoint}:" in ref
     ]
     if len(tool_matches) != 1 or len(endpoint_matches) != 1:
         return False
@@ -1330,7 +1468,9 @@ def _paid_api_blocking_reasons(
     if paid_api_route_eligible:
         return ()
     return tuple(
-        state for state in non_green_states if not state.startswith("subscription_quota_state:")
+        state
+        for state in non_green_states
+        if not state.startswith("subscription_quota_state:")
     )
 
 
@@ -1371,7 +1511,10 @@ def _non_green_states(
         states.append(f"bootstrap_dependency_state:{bootstrap_state.value}")
     if subscription_state is not SubscriptionQuotaState.FRESH:
         states.append(f"subscription_quota_state:{subscription_state.value}")
-    if local_resource_state not in {LocalResourceState.GREEN, LocalResourceState.YELLOW}:
+    if local_resource_state not in {
+        LocalResourceState.GREEN,
+        LocalResourceState.YELLOW,
+    }:
         states.append(f"local_resource_state:{local_resource_state.value}")
     if overdue_receipts:
         states.append("spend_reconciliation_overdue")

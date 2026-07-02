@@ -34,8 +34,11 @@ from hapax.spine.route_metadata_schema import (
     ToolAuthorityUse,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-PLATFORM_CAPABILITY_REGISTRY = REPO_ROOT / "config" / "platform-capability-registry.json"
+from hapax.spine._config import default_config_path
+
+# Injected via HAPAX_SPINE_CONFIG_DIR (was council-root-relative before the extraction). Import-safe:
+# a sentinel Path when unconfigured, so `from ... import PLATFORM_CAPABILITY_REGISTRY` never raises.
+PLATFORM_CAPABILITY_REGISTRY = default_config_path("platform-capability-registry.json")
 
 CAPACITY_INVARIANT = (
     "Default to maximum appropriate quality-preserving utilization. No quality "
@@ -287,7 +290,13 @@ class Mutability(StrictModel):
     provider_spend: bool
 
     def any_mutation(self) -> bool:
-        return self.vault_docs or self.source or self.runtime or self.public or self.provider_spend
+        return (
+            self.vault_docs
+            or self.source
+            or self.runtime
+            or self.public
+            or self.provider_spend
+        )
 
 
 class ToolAccess(StrictModel):
@@ -351,7 +360,9 @@ class FreshnessSurfaceEvidence(StrictModel):
     @model_validator(mode="after")
     def _has_evidence_or_blocker(self) -> Self:
         if not self.evidence_refs and not self.blocked_reasons:
-            raise ValueError("freshness surface requires evidence_refs or blocked_reasons")
+            raise ValueError(
+                "freshness surface requires evidence_refs or blocked_reasons"
+            )
         return self
 
 
@@ -547,16 +558,24 @@ class SupplyDescriptor(StrictModel):
 
 class SupplyVector(StrictModel):
     supply_vector_schema: Literal[1] = 1
-    routing_model_version: Literal["capacity-dimensional-v1"] = "capacity-dimensional-v1"
+    routing_model_version: Literal["capacity-dimensional-v1"] = (
+        "capacity-dimensional-v1"
+    )
     route: SupplyRoute
     authority: SupplyAuthority
     capability_scores: CapabilityScores
     tool_state: list[ToolState] = Field(default_factory=list)
     execution_access: ExecutionAccess = Field(default_factory=ExecutionAccess)
-    verification_capacity: VerificationCapacity = Field(default_factory=VerificationCapacity)
+    verification_capacity: VerificationCapacity = Field(
+        default_factory=VerificationCapacity
+    )
     state: SupplyState = Field(default_factory=SupplyState)
-    historical_performance: HistoricalPerformance = Field(default_factory=HistoricalPerformance)
-    operator_constraints: OperatorConstraints = Field(default_factory=OperatorConstraints)
+    historical_performance: HistoricalPerformance = Field(
+        default_factory=HistoricalPerformance
+    )
+    operator_constraints: OperatorConstraints = Field(
+        default_factory=OperatorConstraints
+    )
     freshness: SupplyFreshness
     # the operator-steered execution axes (optional: only build_supply_vector populates it;
     # direct constructors leave it None and the dispatcher fails closed on a None descriptor)
@@ -592,7 +611,9 @@ class PlatformCapabilityRoute(StrictModel):
     quality_envelope: QualityEnvelope
     capability_scores: CapabilityScores
     tool_state: list[ToolState] = Field(default_factory=list)
-    historical_performance: HistoricalPerformance = Field(default_factory=HistoricalPerformance)
+    historical_performance: HistoricalPerformance = Field(
+        default_factory=HistoricalPerformance
+    )
     context_limits: ContextLimits
     telemetry: Telemetry
     freshness: Freshness
@@ -610,24 +631,33 @@ class PlatformCapabilityRoute(StrictModel):
         if self.route_state is RouteState.ACTIVE and self.blocked_reasons:
             raise ValueError("active routes cannot carry blocked_reasons")
 
-        if self.route_state is RouteState.ACTIVE and self.freshness.evidence.all_blocked_reasons():
+        if (
+            self.route_state is RouteState.ACTIVE
+            and self.freshness.evidence.all_blocked_reasons()
+        ):
             raise ValueError("active routes cannot carry freshness blocked_reasons")
 
         if self.authority_ceiling is AuthorityCeiling.READ_ONLY:
             if self.mutability.any_mutation():
                 raise ValueError("read-only routes cannot declare mutation surfaces")
             if self.tool_access.filesystem is FilesystemAccess.READ_WRITE:
-                raise ValueError("read-only routes cannot declare read-write filesystem access")
+                raise ValueError(
+                    "read-only routes cannot declare read-write filesystem access"
+                )
             if self.tool_access.shell is ShellAccess.FULL:
                 raise ValueError("read-only routes cannot declare full shell access")
             if self.worker_tier is not WorkerTier.READ_ONLY_SIDECAR:
-                raise ValueError("read-only routes must declare read_only_sidecar worker_tier")
+                raise ValueError(
+                    "read-only routes must declare read_only_sidecar worker_tier"
+                )
 
         if (
             self.approval_posture is ApprovalPosture.PLAN_MODE_READ_ONLY
             and self.authority_ceiling is not AuthorityCeiling.READ_ONLY
         ):
-            raise ValueError("plan-mode read-only routes must have read_only authority ceiling")
+            raise ValueError(
+                "plan-mode read-only routes must have read_only authority ceiling"
+            )
 
         if (
             self.approval_posture
@@ -637,13 +667,17 @@ class PlatformCapabilityRoute(StrictModel):
             }
             and self.authority_ceiling is AuthorityCeiling.AUTHORITATIVE
         ):
-            raise ValueError("auto-approval posture cannot be unrestricted authoritative")
+            raise ValueError(
+                "auto-approval posture cannot be unrestricted authoritative"
+            )
 
         if (
             self.mutability.source
             and self.tool_access.filesystem is not FilesystemAccess.READ_WRITE
         ):
-            raise ValueError("source-mutable routes require read-write filesystem access")
+            raise ValueError(
+                "source-mutable routes require read-write filesystem access"
+            )
 
         if self.mutability.source and self.tool_access.shell is not ShellAccess.FULL:
             raise ValueError("source-mutable routes require full shell access")
@@ -652,13 +686,18 @@ class PlatformCapabilityRoute(StrictModel):
             CapacityPool.API_PAID_SPEND,
             CapacityPool.BOOTSTRAP_BUDGET,
         }:
-            raise ValueError("provider-spend mutation requires a paid or bootstrap capacity pool")
+            raise ValueError(
+                "provider-spend mutation requires a paid or bootstrap capacity pool"
+            )
 
         if (
             self.authority_ceiling is AuthorityCeiling.AUTHORITATIVE
-            and QualityFloor.FRONTIER_REQUIRED not in self.quality_envelope.eligible_quality_floors
+            and QualityFloor.FRONTIER_REQUIRED
+            not in self.quality_envelope.eligible_quality_floors
         ):
-            raise ValueError("authoritative routes must declare frontier_required eligibility")
+            raise ValueError(
+                "authoritative routes must declare frontier_required eligibility"
+            )
 
         if self.descriptor_variants:
             axes = set(ExecutionDescriptor.model_fields)
@@ -714,16 +753,22 @@ class PlatformCapabilityRegistry(StrictModel):
             )
 
         route_ids = [route.route_id for route in self.routes]
-        duplicates = sorted({route_id for route_id in route_ids if route_ids.count(route_id) > 1})
+        duplicates = sorted(
+            {route_id for route_id in route_ids if route_ids.count(route_id) > 1}
+        )
         if duplicates:
             raise ValueError(f"duplicate platform route ids: {duplicates}")
 
         missing_routes = required - set(route_ids)
         if missing_routes:
-            raise ValueError(f"missing required platform routes: {sorted(missing_routes)}")
+            raise ValueError(
+                f"missing required platform routes: {sorted(missing_routes)}"
+            )
 
         if self.capacity_invariant != CAPACITY_INVARIANT:
-            raise ValueError("capacity invariant drifted from governed dispatch invariant")
+            raise ValueError(
+                "capacity invariant drifted from governed dispatch invariant"
+            )
 
         # descriptor variant provenance is a cross-route reference; only the registry can
         # verify it resolves (the per-route validator cannot see sibling routes).
@@ -792,7 +837,9 @@ def normalize_route_id(route_id: str) -> str:
 def parse_duration_spec(spec: str) -> timedelta:
     match = _DURATION_RE.fullmatch(spec)
     if match is None:
-        raise ValueError(f"invalid duration spec {spec!r}; use an integer plus s, m, h, or d")
+        raise ValueError(
+            f"invalid duration spec {spec!r}; use an integer plus s, m, h, or d"
+        )
     count = int(match.group("count"))
     unit = match.group("unit")
     if unit == "s":
@@ -820,7 +867,8 @@ def _timestamp_errors(
     now: datetime,
 ) -> list[str]:
     errors = [
-        f"{route_id}: {surface} blocked: {reason}" for reason in surface_evidence.blocked_reasons
+        f"{route_id}: {surface} blocked: {reason}"
+        for reason in surface_evidence.blocked_reasons
     ]
 
     if checked_at is None:
@@ -858,7 +906,9 @@ def check_route_freshness(
     evidence_refs = list(freshness.evidence.all_evidence_refs())
 
     if route.route_state is RouteState.BLOCKED:
-        errors.extend(f"{route.route_id}: blocked: {reason}" for reason in route.blocked_reasons)
+        errors.extend(
+            f"{route.route_id}: blocked: {reason}" for reason in route.blocked_reasons
+        )
 
     for surface in FRESHNESS_SURFACES:
         errors.extend(
@@ -873,10 +923,14 @@ def check_route_freshness(
         )
 
     if route.privacy_posture.value in UNKNOWN_PRIVACY_POSTURES:
-        errors.append(f"{route.route_id}: privacy posture is {route.privacy_posture.value}")
+        errors.append(
+            f"{route.route_id}: privacy posture is {route.privacy_posture.value}"
+        )
 
     if route.telemetry.quota_source.value in UNKNOWN_TELEMETRY_SOURCES:
-        errors.append(f"{route.route_id}: quota telemetry source is {route.telemetry.quota_source}")
+        errors.append(
+            f"{route.route_id}: quota telemetry source is {route.telemetry.quota_source}"
+        )
 
     if route.telemetry.resource_source.value in UNKNOWN_TELEMETRY_SOURCES:
         errors.append(
@@ -907,7 +961,9 @@ def check_registry_freshness(
     checked_now = ensure_utc(now or datetime.now(UTC))
     route_map = registry.route_map()
     checks: list[RouteFreshnessCheck] = []
-    normalized_ids = [normalize_route_id(route_id) for route_id in route_ids] if route_ids else None
+    normalized_ids = (
+        [normalize_route_id(route_id) for route_id in route_ids] if route_ids else None
+    )
 
     for route_id in normalized_ids or sorted(route_map):
         route = route_map.get(route_id)
@@ -931,7 +987,9 @@ def check_registry_freshness(
     )
 
 
-def _capability_score_errors(route: PlatformCapabilityRoute, *, now: datetime) -> list[str]:
+def _capability_score_errors(
+    route: PlatformCapabilityRoute, *, now: datetime
+) -> list[str]:
     errors: list[str] = []
     score_payload = route.capability_scores.model_dump()
     for dimension, payload in score_payload.items():
@@ -939,9 +997,13 @@ def _capability_score_errors(route: PlatformCapabilityRoute, *, now: datetime) -
         stale_after = str(payload.get("stale_after") or "")
         evidence_refs = payload.get("evidence_refs") or []
         if not evidence_refs:
-            errors.append(f"{route.route_id}: capability_scores.{dimension} evidence missing")
+            errors.append(
+                f"{route.route_id}: capability_scores.{dimension} evidence missing"
+            )
         if observed_at is None:
-            errors.append(f"{route.route_id}: capability_scores.{dimension} observed_at missing")
+            errors.append(
+                f"{route.route_id}: capability_scores.{dimension} observed_at missing"
+            )
             continue
         errors.extend(
             _timestamp_errors(
@@ -965,7 +1027,9 @@ def _tool_state_errors(route: PlatformCapabilityRoute, *, now: datetime) -> list
     errors: list[str] = []
     for tool in route.tool_state:
         if tool.observed_at is None:
-            errors.append(f"{route.route_id}: tool_state.{tool.tool_id} observed_at missing")
+            errors.append(
+                f"{route.route_id}: tool_state.{tool.tool_id} observed_at missing"
+            )
             continue
         errors.extend(
             _timestamp_errors(
@@ -1003,7 +1067,10 @@ def _verification_capacity(
     route: PlatformCapabilityRoute, execution_access: ExecutionAccess
 ) -> VerificationCapacity:
     can_run_shell = route.tool_access.shell is ShellAccess.FULL
-    can_read_shell = route.tool_access.shell in {ShellAccess.FULL, ShellAccess.READ_ONLY}
+    can_read_shell = route.tool_access.shell in {
+        ShellAccess.FULL,
+        ShellAccess.READ_ONLY,
+    }
     return VerificationCapacity(
         deterministic_tests=can_run_shell,
         static_checks=can_run_shell,
@@ -1091,7 +1158,9 @@ def build_supply_vector(
             claim_state="unknown",
             quota_state=_telemetry_state(route.telemetry.quota_source.value),
             rate_limit_state="unknown",
-            resource_pressure=_resource_pressure_state(route.telemetry.resource_source.value),
+            resource_pressure=_resource_pressure_state(
+                route.telemetry.resource_source.value
+            ),
             model_version_state="current"
             if route.freshness.provider_docs_checked_at is not None
             else "unknown",
@@ -1182,13 +1251,17 @@ def _apply_receipt_to_route_payload(
     receipt_ref = receipt_reference(receipt)
     freshness = route_payload["freshness"]
     observed_at = receipt.observed_at.isoformat().replace("+00:00", "Z")
-    provider_docs_at = receipt.provider_docs.fetched_at.isoformat().replace("+00:00", "Z")
+    provider_docs_at = receipt.provider_docs.fetched_at.isoformat().replace(
+        "+00:00", "Z"
+    )
     top_blockers = list(route_payload.get("blocked_reasons") or [])
     quota_unobservable_nonblocking = _quota_unobservable_nonblocking(
         route_payload,
         receipt,
     )
-    quota_reason_codes = [] if quota_unobservable_nonblocking else receipt.quota.reason_codes
+    quota_reason_codes = (
+        [] if quota_unobservable_nonblocking else receipt.quota.reason_codes
+    )
 
     _apply_surface(
         freshness,
@@ -1209,7 +1282,9 @@ def _apply_receipt_to_route_payload(
         removable_reasons=_resource_receipt_removable_reasons(route_payload),
     )
     quota_stale_after = (
-        receipt.stale_after if quota_unobservable_nonblocking else receipt.quota.stale_after
+        receipt.stale_after
+        if quota_unobservable_nonblocking
+        else receipt.quota.stale_after
     )
     _apply_surface(
         freshness,
@@ -1248,7 +1323,10 @@ def _apply_receipt_to_route_payload(
         top_blockers.extend(receipt.capability.reason_codes)
     if receipt.resource.status is not EvidenceStatus.OBSERVED:
         top_blockers.extend(receipt.resource.reason_codes)
-    if receipt.quota.status is not EvidenceStatus.OBSERVED and not quota_unobservable_nonblocking:
+    if (
+        receipt.quota.status is not EvidenceStatus.OBSERVED
+        and not quota_unobservable_nonblocking
+    ):
         top_blockers.extend(receipt.quota.reason_codes)
 
     removable_top_blockers = {
@@ -1257,10 +1335,16 @@ def _apply_receipt_to_route_payload(
         "provider_docs_evidence_absent",
     }
     if quota_unobservable_nonblocking:
-        removable_top_blockers.update(_quota_unobservable_removable_reasons(route_payload))
-    top_blockers = [reason for reason in top_blockers if reason not in removable_top_blockers]
+        removable_top_blockers.update(
+            _quota_unobservable_removable_reasons(route_payload)
+        )
+    top_blockers = [
+        reason for reason in top_blockers if reason not in removable_top_blockers
+    ]
     route_payload["blocked_reasons"] = list(dict.fromkeys(top_blockers))
-    route_payload["route_state"] = "blocked" if route_payload["blocked_reasons"] else "active"
+    route_payload["route_state"] = (
+        "blocked" if route_payload["blocked_reasons"] else "active"
+    )
 
 
 def _quota_unobservable_nonblocking(
@@ -1297,7 +1381,8 @@ def _quota_unobservable_nonblocking(
             CapacityPool.API_PAID_SPEND.value,
             CapacityPool.BOOTSTRAP_BUDGET.value,
         }
-        and route_payload.get("telemetry", {}).get("quota_source") == QuotaSource.LEDGER.value
+        and route_payload.get("telemetry", {}).get("quota_source")
+        == QuotaSource.LEDGER.value
     )
 
 
@@ -1341,7 +1426,9 @@ def _apply_surface(
         for reason in surface_payload.get("blocked_reasons", [])
         if reason not in removable_reasons
     ]
-    surface_payload["blocked_reasons"] = list(dict.fromkeys([*prior_reasons, *reason_codes]))
+    surface_payload["blocked_reasons"] = list(
+        dict.fromkeys([*prior_reasons, *reason_codes])
+    )
     surface_payload["evidence_refs"] = list(
         dict.fromkeys([*surface_payload.get("evidence_refs", []), *evidence_refs])
     )
