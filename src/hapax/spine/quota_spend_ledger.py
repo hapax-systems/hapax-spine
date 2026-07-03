@@ -1170,7 +1170,9 @@ def load_quota_spend_ledger_resolved(
     ``HAPAX_QUOTA_SPEND_LEDGER_LIVE`` override resolve it themselves and pass
     ``live_path`` explicitly.
     """
-
+    fixtures_path = resolve_config_path(
+        fixtures_path, "quota-spend-ledger-fixtures.json"
+    )
     candidate = live_path if live_path is not None else DEFAULT_QUOTA_SPEND_LEDGER_LIVE
     live_error: str | None = None
     if candidate.exists():
