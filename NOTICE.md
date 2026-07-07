@@ -8,6 +8,10 @@ This repository is part of the Hapax Systems portfolio. Public metadata, issue a
 
 Runtime mechanism package for append-only events, policy-backed routing, receipts, quotas, EDT, and projections.
 
+## Reader value
+
+Separates the commercial runtime mechanics behind Reins so dispatch, receipts, quotas, and projections can be inspected as mechanisms without treating them as a full estate.
+
 ## Claim ceiling
 
 Mechanism only; not the whole Hapax estate and not fully instance-agnostic until configuration injection is complete.
