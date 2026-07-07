@@ -9,7 +9,7 @@ This repository does not accept contributions. OTO is the sole operator of the H
 ## What this means in practice
 
 - Issues are redirect-only; `.github/ISSUE_TEMPLATE/config.yml` disables blank issues.
-- `.github/workflows/` auto-closes pull requests.
+- Pull requests are not an intake path for this repository.
 - Repositories disable Discussions and Wiki except for the `hapax-constitution` Wiki, which mirrors the axiom registry.
 - Funding links, if present, are no-perk research support only.
 - This file is rendered from `hapax-constitution/sdlc/render/`; edits are overwritten on next render.
