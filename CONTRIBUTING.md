@@ -1,6 +1,8 @@
 # Contributing
 
-This repository does not accept contributions. OTO is the sole operator of the Hapax operating environment by constitutional axiom (`single_user`, weight 100); the architecture forecloses contributor onboarding at the structural level.
+This repository does not accept contributions through GitHub. Hapax is operated as a single-operator research estate; public repository affordances are for inspection, citation, and boundary review, not contributor onboarding.
+
+The `single_user` axiom is a boundary: it prevents public maintainer roles, community governance, and external patch queues from becoming part of this repository's authority model.
 
 ## Why
 
@@ -20,4 +22,4 @@ Use the repository as a source-available inspection surface. Integration help an
 
 ## Citation
 
-If your research engages with this codebase, cite via `CITATION.cff` (Citation File Format v1.2.0). Archival DOI lives in `.zenodo.json`. The constellation graph is queryable via DataCite Commons (GraphQL: https://api.datacite.org/graphql).
+If your research engages with this codebase, cite via `CITATION.cff` (Citation File Format v1.2.0). Archival DOI lives in `.zenodo.json`.
