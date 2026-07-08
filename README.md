@@ -18,7 +18,7 @@ Mechanism only; not the whole Hapax estate and not fully instance-agnostic until
 
 ## License and rights
 
-Source-available under Business Source License 1.1; not open source until the change license/date applies. Commercial/hosted-service rights remain reserved by the BSL grant.
+Source-available under Business Source License 1.1; not open source until the change license/date applies. Self-hosted and non-competing production use is permitted by the Additional Use Grant; offering the licensed work as a competing hosted or managed service remains reserved.
 
 Rendered summary: Business Source License 1.1 (source-available; not Open Source until the change license/date applies). See `LICENSE` for the authority surfaces.
 
@@ -26,6 +26,7 @@ Rendered summary: Business Source License 1.1 (source-available; not Open Source
 
 - Issues are redirect-only; no discussions, no pull requests accepted; see `CONTRIBUTING.md` and `SUPPORT.md`
 - Public copy must use `hapax-systems` organization links for first-party Hapax repositories.
+- README text is orientation, not a freshness witness; current public claims require surface-specific release, reconcile, or publication receipts.
 - Publication, weblog, RSS, social, DOI/archive, and other public fanout paths must route through the governed publication bus or a documented guarded legacy surface.
 - Governance reference: https://github.com/hapax-systems/hapax-constitution
 
