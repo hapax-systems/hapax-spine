@@ -11,7 +11,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from shared.quota_spend_ledger import (
+from hapax.spine.quota_spend_ledger import (
     DEFAULT_QUOTA_SPEND_LEDGER_LIVE,
     QUOTA_SPEND_LEDGER_FIXTURES,
     QUOTA_SPEND_LEDGER_LIVE_ENV,
@@ -707,7 +707,7 @@ def test_live_env_override_resolution_lives_outside_the_inert_module() -> None:
     # not read the environment itself (pinned by
     # test_module_has_no_provider_or_runtime_imports). The env-aware resolution
     # lives in shared.dispatcher_policy.
-    from shared.dispatcher_policy import quota_spend_ledger_live_path_from_env
+    from hapax.spine.dispatcher_policy import quota_spend_ledger_live_path_from_env
 
     assert QUOTA_SPEND_LEDGER_LIVE_ENV == "HAPAX_QUOTA_SPEND_LEDGER_LIVE"
     assert DEFAULT_QUOTA_SPEND_LEDGER_LIVE.name == "quota-spend-ledger-live.json"
@@ -721,7 +721,7 @@ def test_quantization_enum_parity_with_registry() -> None:
     """The ledger defines its OWN Quantization enum (it must not import the registry — the ledger
     is the deliberately low-dependency inert module). This drift-pin keeps the two value sets
     byte-identical so a receipt's quantization matches a route descriptor's quantization exactly."""
-    from shared.platform_capability_registry import Quantization as RegistryQuantization
+    from hapax.spine.platform_capability_registry import Quantization as RegistryQuantization
 
     assert {q.value for q in Quantization} == {q.value for q in RegistryQuantization}
 
@@ -750,8 +750,8 @@ def test_effort_and_model_id_enum_parity_with_registry() -> None:
     """The ledger mirrors the registry Effort/ModelId enums (it must not import the registry — the
     inert ledger is low-dependency). These drift-pins keep the value sets byte-identical so a
     receipt's metered effort/model_id matches a route descriptor's exactly."""
-    from shared.platform_capability_registry import Effort as RegistryEffort
-    from shared.platform_capability_registry import ModelId as RegistryModelId
+    from hapax.spine.platform_capability_registry import Effort as RegistryEffort
+    from hapax.spine.platform_capability_registry import ModelId as RegistryModelId
 
     assert {e.value for e in Effort} == {e.value for e in RegistryEffort}
     assert {m.value for m in ModelId} == {m.value for m in RegistryModelId}

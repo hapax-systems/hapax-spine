@@ -18,7 +18,7 @@ def test_auth_header_construction():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -49,7 +49,7 @@ def test_url_encoding_of_params():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -86,7 +86,7 @@ def test_empty_credentials_returns_empty_dict():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -106,7 +106,7 @@ def test_http_failure_returns_empty_dict():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -127,7 +127,7 @@ def test_json_decode_failure_returns_empty_dict():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -153,7 +153,7 @@ def test_is_available_false_without_keys():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -172,7 +172,7 @@ def test_is_available_true_with_traces():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -198,7 +198,7 @@ def test_is_available_false_no_traces():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -224,7 +224,7 @@ def test_no_params_omits_query_string():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -253,7 +253,7 @@ def test_timeout_passed_to_urlopen():
     ):
         import importlib
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -286,7 +286,7 @@ def test_connection_error_logs_connection(caplog):
         import importlib
         import logging
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 
@@ -310,7 +310,7 @@ def test_json_error_logs_invalid_json(caplog):
         import importlib
         import logging
 
-        import shared.langfuse_client as mod
+        import hapax.spine.langfuse_client as mod
 
         importlib.reload(mod)
 

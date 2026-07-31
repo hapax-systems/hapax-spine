@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shared.gate_log import (
+from hapax.spine.gate_log import (
     DEFAULT_GATE_LOG,
     GateEvent,
     append_gate_event,

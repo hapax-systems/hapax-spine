@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from shared.dispatcher_policy import (
+from hapax.spine.dispatcher_policy import (
     DispatchAction,
     RouteAuthorityReceipt,
     build_dispatch_request,
@@ -20,8 +20,8 @@ from shared.dispatcher_policy import (
     route_authority_receipt_payload_hash,
     route_decision_receipt_payload,
 )
-from shared.platform_capability_receipts import PLATFORM_CAPABILITY_RECEIPT_DIR_ENV
-from shared.platform_capability_registry import load_platform_capability_registry
+from hapax.spine.platform_capability_receipts import PLATFORM_CAPABILITY_RECEIPT_DIR_ENV
+from hapax.spine.platform_capability_registry import load_platform_capability_registry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "hapax-platform-capability-receipts"

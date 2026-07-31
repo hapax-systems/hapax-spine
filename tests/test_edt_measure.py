@@ -21,7 +21,7 @@ from unittest import mock
 
 import pytest
 
-from shared.edt_measure import (
+from hapax.spine.edt_measure import (
     DEFAULT_KNOBS_PATH,
     NUM_ROUTING_CLASSES,
     ROUTING_CLASSES,
@@ -36,7 +36,7 @@ from shared.edt_measure import (
     score_variant_leaf,
     slicing_test_dedupe,
 )
-from shared.platform_capability_receipts import (
+from hapax.spine.platform_capability_receipts import (
     CliEvidence,
     EvidenceStatus,
     PlatformCapabilityReceipt,
@@ -44,7 +44,7 @@ from shared.platform_capability_receipts import (
     SurfaceEvidence,
     WrapperEvidence,
 )
-from shared.platform_capability_registry import (
+from hapax.spine.platform_capability_registry import (
     PlatformCapabilityRegistry,
     load_platform_capability_registry,
 )
@@ -413,7 +413,7 @@ def test_step0_fields_consumed_optional_and_none_safe() -> None:
         meta_mode = "ultracode"
         interaction_record_ref = "ref:interaction-1"
 
-    from shared import edt_measure
+    from hapax.spine import edt_measure
 
     assert edt_measure._optional_meta_modes(_MetaVariant()) == ("ultracode",)
 

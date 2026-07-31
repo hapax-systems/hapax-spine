@@ -12,7 +12,7 @@ from types import ModuleType
 import pytest
 from pydantic import ValidationError
 
-from shared.platform_capability_receipts import (
+from hapax.spine.platform_capability_receipts import (
     CliEvidence,
     EvidenceStatus,
     PlatformCapabilityReceipt,
@@ -20,7 +20,7 @@ from shared.platform_capability_receipts import (
     SurfaceEvidence,
     WrapperEvidence,
 )
-from shared.platform_capability_registry import (
+from hapax.spine.platform_capability_registry import (
     REQUIRED_ROUTE_IDS,
     AuthorityCeiling,
     PlatformCapabilityRegistry,
@@ -122,8 +122,8 @@ def test_glmcp_review_seat_registered_as_fail_closed_read_only_route() -> None:
     # The GLM Coding-Plan review seat (live in cc-pr-review-dispatch) is now visible
     # in DESCRIBE as a non-launchable, read-only ReviewSeatAdapter route. The coding
     # workhorse is a separate, bakeoff-gated route — NOT this one.
-    from shared.dispatcher_policy import ROUTE_SPECIFIC_SUBSCRIPTION_QUOTA_REQUIRED
-    from shared.quota_spend_ledger import RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES
+    from hapax.spine.dispatcher_policy import ROUTE_SPECIFIC_SUBSCRIPTION_QUOTA_REQUIRED
+    from hapax.spine.quota_spend_ledger import RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES
 
     assert "glmcp.review.direct" in REQUIRED_ROUTE_IDS
     route = load_platform_capability_registry().require("glmcp.review.direct")
@@ -580,7 +580,7 @@ def test_supply_descriptor_excludes_blocked_variants_fail_closed() -> None:
 # enum-without-route holes: claude-haiku-4-5 routable, Platform.LOCAL_TOOL/Mode.LOCAL materialized.
 # --------------------------------------------------------------------------------------
 def test_haiku_and_local_tool_routes_are_required_and_routable() -> None:
-    from shared.platform_capability_registry import (
+    from hapax.spine.platform_capability_registry import (
         Mode,
         ModelId,
         Platform,
