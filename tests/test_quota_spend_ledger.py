@@ -615,7 +615,9 @@ def test_subscription_quota_state_for_route_uses_exact_route_snapshot() -> None:
 
 
 def test_module_has_no_provider_or_runtime_imports() -> None:
-    source = Path("shared/quota_spend_ledger.py").read_text(encoding="utf-8")
+    from hapax.spine import quota_spend_ledger as _ledger_module
+
+    source = Path(_ledger_module.__file__).read_text(encoding="utf-8")
 
     forbidden_tokens = [
         "import openai",

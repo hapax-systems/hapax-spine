@@ -109,7 +109,7 @@ class Effort(StrEnum):
 
 
 class ModelId(StrEnum):
-    # mirrored from shared.platform_capability_registry.ModelId — the structured dated identity that
+    # mirrored from hapax.spine.platform_capability_registry.ModelId — the structured dated identity that
     # replaces the coarse free-text model_or_engine for spend metering; drift-pinned to the registry.
     CLAUDE_OPUS_4_8 = "claude-opus-4-8"
     CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
@@ -121,6 +121,7 @@ class ModelId(StrEnum):
     MISTRAL_MEDIUM_3_5 = "mistral-medium-3.5"
     GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview"
     Z_AI_GLM_5 = "z_ai-glm-5"
+    GROK_BUILD = "grok-build"
     UNKNOWN = "unknown"
 
 

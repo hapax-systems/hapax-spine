@@ -493,7 +493,7 @@ def test_d0_platform_set_is_operator_assertion() -> None:
     payload = _fresh_payload()
     measures = score_edt(_registry(payload), knobs_path=_knobs_file(_OBSERVED_MEMBERS), now=NOW)
     m = measures[0]
-    assert m.observed_platform_count == 7  # the real registry prefixes
+    assert m.observed_platform_count == 8  # the real registry prefixes (grok added an 8th)
     assert tuple(m.expected_platform_members) == tuple(
         _OBSERVED_MEMBERS
     )  # read verbatim from knobs
@@ -710,7 +710,10 @@ def test_blocked_variant_leaf_is_unavailable() -> None:
 def test_shipped_config_retired_phantoms_are_omitted() -> None:
     # load the ACTUAL shipped config/edt-platform-knobs.yaml (not a mirrored temp file) so a typo or
     # drift in the committed YAML fails this test.
-    shipped = Path(__file__).resolve().parents[2] / "config" / "edt-platform-knobs.yaml"
+    from hapax.spine._config import default_config_path
+
+    # spine ships no config/ dir -- the instance INJECTS it via HAPAX_SPINE_CONFIG_DIR
+    shipped = default_config_path("edt-platform-knobs.yaml")
     assert shipped.is_file(), shipped
     knobs = load_edt_knobs(shipped)
     # cohere/hf are counted in the declared members + retired_phantoms (the operator's target total)

@@ -21,6 +21,7 @@
     "codex.headless.full",
     "codex.headless.spark",
     "glmcp.review.direct",
+    "grok.headless.full",
     "local_tool.local.worker",
     "vibe.headless.full"
   ],
@@ -3871,6 +3872,308 @@
       "approval_posture": "default_deny_enable_latch",
       "capability_tier": "jr_plus",
       "worker_tier": "bounded_worker"
+    },
+    {
+      "registry_schema": 1,
+      "route_id": "grok.headless.full",
+      "platform": "grok",
+      "mode": "headless",
+      "profile": "full",
+      "launcher": "~/.local/bin/hapax-grok --resume-session <session>",
+      "sanctioned_wrapper": "~/.local/bin/hapax-grok",
+      "summary": "Grok headless full SDLC worker (appendix-first ad-hoc harness; formal leaf blocked until receipts)",
+      "notes": "R3-live under CASE-CAPACITY-ROUTING-001 / S5-GROK-R3-LIVE-20260709. route_state blocked until capability/quota receipts clear. Scores provisional confidence=1. Ad-hoc carrier remains valid. Authority ceiling frontier_review_required.",
+      "route_state": "blocked",
+      "blocked_reasons": [
+        "fresh_capability_evidence_absent",
+        "account_live_quota_receipt_absent",
+        "quality_equivalence_record_absent"
+      ],
+      "model_or_engine": "grok-build",
+      "execution_descriptor": {
+        "model_id": "grok-build",
+        "effort": "none",
+        "context_mode": "standard",
+        "fast_mode": "off",
+        "quantization": "none"
+      },
+      "approval_posture": "no_ask_hooks_enforced",
+      "capability_tier": "frontier_fallback",
+      "worker_tier": "full_worker",
+      "auth_surface": "subscription",
+      "capacity_pool": "subscription_quota",
+      "mutability": {
+        "vault_docs": true,
+        "source": true,
+        "runtime": false,
+        "public": false,
+        "provider_spend": false
+      },
+      "authority_ceiling": "frontier_review_required",
+      "tool_access": {
+        "filesystem": "read_write",
+        "shell": "full",
+        "browser": true,
+        "mcp": [
+          "github",
+          "playwright"
+        ]
+      },
+      "privacy_posture": "provider_training_unknown",
+      "quality_envelope": {
+        "eligible_quality_floors": [
+          "frontier_review_required",
+          "deterministic_ok"
+        ],
+        "explicit_equivalence_records": [],
+        "excluded_task_classes": [
+          "frontier_required_without_equivalence_record",
+          "governance_authority_case",
+          "privacy_secret_sensitive",
+          "runtime_mutation",
+          "provider_spend",
+          "public_release_without_gate"
+        ]
+      },
+      "capability_scores": {
+        "grounding": {
+          "score": 4,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:grounding:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "governance_reasoning": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:governance_reasoning:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "source_editing": {
+          "score": 4,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:source_editing:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "architecture": {
+          "score": 4,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:architecture:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "ambiguity_resolution": {
+          "score": 4,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:ambiguity_resolution:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "long_context": {
+          "score": 4,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:long_context:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "current_docs_grounding": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:current_docs_grounding:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "multimodal_verification": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:multimodal_verification:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "runtime_debugging": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:runtime_debugging:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "test_authoring": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:test_authoring:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "coordination_reliability": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:coordination_reliability:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "privacy_safety": {
+          "score": 3,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:privacy_safety:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "public_claim_safety": {
+          "score": 2,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:public_claim_safety:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        },
+        "local_calibration": {
+          "score": 1,
+          "confidence": 1,
+          "evidence_refs": [
+            "platform-capability-registry:grok.headless.full:dimensional-score:local_calibration:provisional"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h"
+        }
+      },
+      "tool_state": [
+        {
+          "tool_id": "filesystem",
+          "available": true,
+          "authority_use": [
+            "read",
+            "write"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h",
+          "evidence_ref": "platform-capability-registry:grok.headless.full:tool:filesystem"
+        },
+        {
+          "tool_id": "local_shell",
+          "available": true,
+          "authority_use": [
+            "read",
+            "execute",
+            "verify"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h",
+          "evidence_ref": "platform-capability-registry:grok.headless.full:tool:local_shell"
+        },
+        {
+          "tool_id": "browser",
+          "available": true,
+          "authority_use": [
+            "read",
+            "verify"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h",
+          "evidence_ref": "platform-capability-registry:grok.headless.full:tool:browser"
+        },
+        {
+          "tool_id": "github",
+          "available": true,
+          "authority_use": [
+            "read"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h",
+          "evidence_ref": "platform-capability-registry:grok.headless.full:tool:github"
+        },
+        {
+          "tool_id": "playwright",
+          "available": true,
+          "authority_use": [
+            "read"
+          ],
+          "observed_at": "2026-07-09T07:25:00Z",
+          "stale_after": "24h",
+          "evidence_ref": "platform-capability-registry:grok.headless.full:tool:playwright"
+        }
+      ],
+      "context_limits": {
+        "max_context_class": "large"
+      },
+      "telemetry": {
+        "quota_source": "manual",
+        "cost_source": "unknown",
+        "resource_source": "local_probe"
+      },
+      "freshness": {
+        "capability_checked_at": null,
+        "capability_stale_after": "24h",
+        "quota_checked_at": null,
+        "quota_stale_after": "15m",
+        "resource_checked_at": "2026-07-09T07:25:00Z",
+        "resource_stale_after": "24h",
+        "provider_docs_checked_at": "2026-07-09T07:25:00Z",
+        "provider_docs_stale_after": "30d",
+        "evidence": {
+          "capability": {
+            "evidence_refs": [
+              "local:grok --version:0.2.93:2026-07-09T07:25Z",
+              "local:hapax-grok:launcher-present:2026-07-09T07:25Z"
+            ],
+            "blocked_reasons": [
+              "fresh_capability_evidence_absent",
+              "quality_equivalence_record_absent"
+            ]
+          },
+          "quota": {
+            "evidence_refs": [],
+            "blocked_reasons": [
+              "account_live_quota_receipt_absent"
+            ]
+          },
+          "resource": {
+            "evidence_refs": [
+              "local:hapax-appendix:sdlc-host:2026-07-09T07:25Z",
+              "local:grok-hook-adapter:executable"
+            ],
+            "blocked_reasons": []
+          },
+          "provider_docs": {
+            "evidence_refs": [
+              "official:https://docs.x.ai/"
+            ],
+            "blocked_reasons": []
+          }
+        }
+      },
+      "known_unknowns": [
+        "xAI quota unmeasured; no PlatformCapabilityReceipt writer yet (R4).",
+        "capability_scores provisional confidence=1 until witnessed outcomes.",
+        "privacy_posture provider_training_unknown pending provider docs evidence.",
+        "Dual SoR: spine package Platform enum must stay aligned."
+      ]
     }
   ]
 }

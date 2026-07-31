@@ -1,4 +1,4 @@
-"""Tests for shared/langfuse_client.py — Langfuse API client."""
+"""Tests for hapax/spine/langfuse_client.py — Langfuse API client."""
 
 import base64
 import json
@@ -24,7 +24,7 @@ def test_auth_header_construction():
 
         expected = base64.b64encode(b"pk-test-123:sk-test-456").decode()
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"data": []}'
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -53,7 +53,7 @@ def test_url_encoding_of_params():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"data": []}'
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -110,7 +110,7 @@ def test_http_failure_returns_empty_dict():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen", side_effect=URLError("connection refused")):
+        with patch("hapax.spine.langfuse_client.urlopen", side_effect=URLError("connection refused")):
             result = mod.langfuse_get("/traces", {"limit": 1})
             assert result == {}
 
@@ -131,7 +131,7 @@ def test_json_decode_failure_returns_empty_dict():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b"not json at all"
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -176,7 +176,7 @@ def test_is_available_true_with_traces():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = json.dumps({"data": [{"id": "trace-1"}]}).encode()
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -202,7 +202,7 @@ def test_is_available_false_no_traces():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"data": []}'
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -228,7 +228,7 @@ def test_no_params_omits_query_string():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"data": []}'
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -257,7 +257,7 @@ def test_timeout_passed_to_urlopen():
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"data": []}'
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -290,7 +290,7 @@ def test_connection_error_logs_connection(caplog):
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen", side_effect=URLError("refused")):
+        with patch("hapax.spine.langfuse_client.urlopen", side_effect=URLError("refused")):
             with caplog.at_level(logging.WARNING):
                 mod.langfuse_get("/traces")
 
@@ -314,7 +314,7 @@ def test_json_error_logs_invalid_json(caplog):
 
         importlib.reload(mod)
 
-        with patch("shared.langfuse_client.urlopen") as mock_urlopen:
+        with patch("hapax.spine.langfuse_client.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b"not json"
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
