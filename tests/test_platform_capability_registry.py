@@ -32,10 +32,21 @@ from hapax.spine.platform_capability_registry import (
     load_platform_capability_registry,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DISPATCHER = REPO_ROOT / "scripts" / "hapax-methodology-dispatch"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+# council-instance CLI; see the note in test_platform_capability_receipts.py
+COUNCIL_ROOT = Path(__file__).resolve().parents[2] / "hapax-council"
+DISPATCHER = COUNCIL_ROOT / "scripts" / "hapax-methodology-dispatch"
 FRESH_NOW = datetime(2026, 5, 9, 21, 0, tzinfo=UTC)
 ROUTE_EVIDENCE_NOW = datetime(2026, 5, 17, 8, 14, tzinfo=UTC)
+
+
+requires_council_dispatcher = pytest.mark.skipif(
+    not DISPATCHER.is_file(),
+    reason=(
+        "council-instance CLI scripts/hapax-methodology-dispatch is not part of the spine "
+        "mechanism package (instance taxonomy is injected, not baked)"
+    ),
+)
 
 
 def _dispatcher_module() -> ModuleType:
@@ -101,6 +112,7 @@ def test_seed_registry_loads_sanctioned_platform_routes() -> None:
     assert all(not route_id.startswith("gemini.") for route_id in registry.route_map())
 
 
+@requires_council_dispatcher
 def test_registry_route_ids_match_dispatcher_platform_paths() -> None:
     registry = load_platform_capability_registry()
     dispatcher = _dispatcher_module()

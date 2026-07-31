@@ -23,10 +23,27 @@ from hapax.spine.dispatcher_policy import (
 from hapax.spine.platform_capability_receipts import PLATFORM_CAPABILITY_RECEIPT_DIR_ENV
 from hapax.spine.platform_capability_registry import load_platform_capability_registry
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "hapax-platform-capability-receipts"
-REGISTRY = REPO_ROOT / "config" / "platform-capability-registry.json"
-QUOTA_LEDGER = REPO_ROOT / "config" / "quota-spend-ledger-fixtures.json"
+import pytest
+
+from hapax.spine._config import default_config_path
+
+# spine ships no config/ dir -- the instance INJECTS it via HAPAX_SPINE_CONFIG_DIR
+REGISTRY = default_config_path("platform-capability-registry.json")
+QUOTA_LEDGER = default_config_path("quota-spend-ledger-fixtures.json")
+
+# The council-instance CLIs. Spine is the MECHANISM package ("instance taxonomy injected,
+# not baked") and deliberately ships no scripts/ dir, so these are reachable only when a
+# council checkout sits alongside. Gated, never silently passed.
+COUNCIL_ROOT = Path(__file__).resolve().parents[2] / "hapax-council"
+SCRIPT = COUNCIL_ROOT / "scripts" / "hapax-platform-capability-receipts"
+
+pytestmark = pytest.mark.skipif(
+    not SCRIPT.is_file(),
+    reason=(
+        "council-instance CLI scripts/hapax-platform-capability-receipts is not part of the "
+        "spine mechanism package (instance taxonomy is injected, not baked)"
+    ),
+)
 NOW = "2026-05-17T19:55:00Z"
 NOW_DT = datetime.fromisoformat(NOW.replace("Z", "+00:00"))
 API_NOW = "2026-06-04T16:00:00Z"
@@ -759,7 +776,7 @@ def test_runtime_actuation_receipt_allows_dimensional_runtime_candidate(
     assert not any(veto.code == "mutation_surface_mismatch" for veto in candidate.vetoes)
 
 
-MINT_SCRIPT = REPO_ROOT / "scripts" / "hapax-mint-route-authority-receipt"
+MINT_SCRIPT = COUNCIL_ROOT / "scripts" / "hapax-mint-route-authority-receipt"
 
 
 def _mint_route_authority_receipt(
