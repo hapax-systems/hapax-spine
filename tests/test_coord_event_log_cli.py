@@ -14,7 +14,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from shared.coord_event_log import main
+from hapax.spine.coord_event_log import main
 
 BASE = [
     "--event-type",

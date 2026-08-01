@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from shared import coord_event_log
-from shared.coord_event_log import CoordEvent, CoordEventLog, CoordWriter
+from hapax.spine import coord_event_log
+from hapax.spine.coord_event_log import CoordEvent, CoordEventLog, CoordWriter
 
 if TYPE_CHECKING:
     import pytest

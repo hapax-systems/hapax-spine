@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.dispatcher_policy import (
+from hapax.spine.dispatcher_policy import (
     ClogRouteState,
     DispatchAction,
     DispatchRequest,
@@ -19,19 +19,19 @@ from shared.dispatcher_policy import (
     load_dispatch_policy_sources,
     write_route_decision_receipt,
 )
-from shared.platform_capability_registry import (
+from hapax.spine.platform_capability_registry import (
     CapacityPool,
     PlatformCapabilityRegistry,
     PlatformCapabilityRoute,
     build_supply_vector,
     load_platform_capability_registry,
 )
-from shared.quota_spend_ledger import (
+from hapax.spine.quota_spend_ledger import (
     QUOTA_SPEND_LEDGER_FIXTURES,
     QUOTA_SPEND_LEDGER_LIVE_ENV,
     QuotaSpendLedger,
 )
-from shared.route_metadata_schema import DemandVector, RouteEnvelope, build_demand_vector
+from hapax.spine.route_metadata_schema import DemandVector, RouteEnvelope, build_demand_vector
 
 
 @pytest.fixture(autouse=True)

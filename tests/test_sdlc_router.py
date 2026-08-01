@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from shared.gate_log import GateEvent, append_gate_event
-from shared.platform_capability_registry import (
+from hapax.spine.gate_log import GateEvent, append_gate_event
+from hapax.spine.platform_capability_registry import (
     build_supply_vector,
     load_platform_capability_registry,
 )
-from shared.route_metadata_schema import LearningEligibility
-from shared.sdlc_router import (
+from hapax.spine.route_metadata_schema import LearningEligibility
+from hapax.spine.sdlc_router import (
     DEFAULT_FRONTIER_INCUMBENT_ROUTE_ID,
     ClassActivationEvidence,
     SdlcRouteCandidate,

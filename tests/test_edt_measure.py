@@ -21,7 +21,7 @@ from unittest import mock
 
 import pytest
 
-from shared.edt_measure import (
+from hapax.spine.edt_measure import (
     DEFAULT_KNOBS_PATH,
     NUM_ROUTING_CLASSES,
     ROUTING_CLASSES,
@@ -36,7 +36,7 @@ from shared.edt_measure import (
     score_variant_leaf,
     slicing_test_dedupe,
 )
-from shared.platform_capability_receipts import (
+from hapax.spine.platform_capability_receipts import (
     CliEvidence,
     EvidenceStatus,
     PlatformCapabilityReceipt,
@@ -44,7 +44,7 @@ from shared.platform_capability_receipts import (
     SurfaceEvidence,
     WrapperEvidence,
 )
-from shared.platform_capability_registry import (
+from hapax.spine.platform_capability_registry import (
     PlatformCapabilityRegistry,
     load_platform_capability_registry,
 )
@@ -413,7 +413,7 @@ def test_step0_fields_consumed_optional_and_none_safe() -> None:
         meta_mode = "ultracode"
         interaction_record_ref = "ref:interaction-1"
 
-    from shared import edt_measure
+    from hapax.spine import edt_measure
 
     assert edt_measure._optional_meta_modes(_MetaVariant()) == ("ultracode",)
 
@@ -493,7 +493,7 @@ def test_d0_platform_set_is_operator_assertion() -> None:
     payload = _fresh_payload()
     measures = score_edt(_registry(payload), knobs_path=_knobs_file(_OBSERVED_MEMBERS), now=NOW)
     m = measures[0]
-    assert m.observed_platform_count == 7  # the real registry prefixes
+    assert m.observed_platform_count == 8  # the real registry prefixes (grok added an 8th)
     assert tuple(m.expected_platform_members) == tuple(
         _OBSERVED_MEMBERS
     )  # read verbatim from knobs
@@ -710,7 +710,10 @@ def test_blocked_variant_leaf_is_unavailable() -> None:
 def test_shipped_config_retired_phantoms_are_omitted() -> None:
     # load the ACTUAL shipped config/edt-platform-knobs.yaml (not a mirrored temp file) so a typo or
     # drift in the committed YAML fails this test.
-    shipped = Path(__file__).resolve().parents[2] / "config" / "edt-platform-knobs.yaml"
+    from hapax.spine._config import default_config_path
+
+    # spine ships no config/ dir -- the instance INJECTS it via HAPAX_SPINE_CONFIG_DIR
+    shipped = default_config_path("edt-platform-knobs.yaml")
     assert shipped.is_file(), shipped
     knobs = load_edt_knobs(shipped)
     # cohere/hf are counted in the declared members + retired_phantoms (the operator's target total)
