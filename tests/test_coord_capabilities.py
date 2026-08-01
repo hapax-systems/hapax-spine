@@ -18,7 +18,7 @@ re-bound lane) fails verification.
 import json
 from dataclasses import replace
 
-from shared.governance.coord_capabilities import (
+from hapax.spine.coord_capabilities import (
     CapabilityConsumptionLedger,
     main,
     mint_dispatch_capability,

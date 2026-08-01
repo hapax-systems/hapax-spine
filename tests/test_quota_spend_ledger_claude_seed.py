@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from shared.quota_spend_ledger import (
+from hapax.spine.quota_spend_ledger import (
     CapacityPool,
     PaidRouteRequest,
     SubscriptionQuotaState,

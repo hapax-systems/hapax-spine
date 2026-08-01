@@ -7,8 +7,8 @@ from unittest import mock
 
 import pytest
 
-from shared import coord_projection as cp
-from shared.coord_event_log import (
+from hapax.spine import coord_projection as cp
+from hapax.spine.coord_event_log import (
     CoordEvent,
     CoordEventLog,
     CoordWriter,
