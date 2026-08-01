@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # Not restricted to main: a PR to any long-lived branch needs CI too. Before this, a PR to
+  # e.g. grok/r3-dual-sor got NO checks at all.
   pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: [main, "grok/**", "codex/**"]
   workflow_dispatch: {}
 
 permissions:
@@ -43,19 +44,43 @@ jobs:
       - name: Import package
         run: python -c "import hapax.spine"
 
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+      # HAPAX_SPINE_CONFIG_DIR is REQUIRED: spine is the mechanism package and the instance
+      # injects its config data. tests/fixtures is the suite's own instance. Without it the
+      # loaders fail loud by design (see src/hapax/spine/_config.py).
+      - name: Run the suite
+        env:
+          HAPAX_SPINE_CONFIG_DIR: ${{ github.workspace }}/tests/fixtures
+          HAPAX_SPINE_REPO_ROOT: ${{ github.workspace }}
+        # Uses the DECLARED dev group, so pyproject is the source of truth for what the
+        # suite needs. If the declaration rots, CI fails here rather than silently
+        # papering over it with an ad-hoc --with.
+        run: uv run --group dev python -m pytest -q
+      # The council-instance CLI tests skip when no council checkout sits alongside, which is
+      # always true in CI. They report as SKIPPED, never as passed.
+
   all-green:
     name: all-green
     runs-on: ubuntu-latest
     needs:
       - metadata-smoke
       - package-smoke
+      - tests
     if: always()
     steps:
       - name: Require required jobs to pass
         env:
           RESULTS: ${{ join(needs.*.result, ',') }}
         run: |
-          if [ "$RESULTS" != "success,success" ]; then
-            echo "::error::Required job results: $RESULTS"
-            exit 1
-          fi
+          # Do NOT compare against a fixed "success,success": adding a job silently turned
+          # this into an always-fail. Reject any non-success result, whatever the count.
+          case "$RESULTS" in
+            *failure*|*cancelled*|*skipped*)
+              echo "::error::Required job results: $RESULTS"
+              exit 1
+              ;;
+          esac
