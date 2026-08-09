@@ -18,7 +18,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from hapax.spine._config import default_config_path
+from hapax.spine._config import default_config_path, resolve_config_path
 
 # Injected via HAPAX_SPINE_CONFIG_DIR (was council-root-relative before the extraction). Import-safe sentinel.
 QUOTA_SPEND_LEDGER_FIXTURES = default_config_path("quota-spend-ledger-fixtures.json")
@@ -1131,10 +1131,10 @@ def build_dashboard(
 
 
 def load_quota_spend_ledger(
-    path: Path = QUOTA_SPEND_LEDGER_FIXTURES,
+    path: Path | None = None,
 ) -> QuotaSpendLedger:
     """Load quota/spend fixtures, failing closed on malformed data."""
-
+    path = resolve_config_path(path, "quota-spend-ledger-fixtures.json")
     try:
         return QuotaSpendLedger.model_validate(_load_json_object(path))
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
@@ -1155,7 +1155,7 @@ class ResolvedQuotaSpendLedger(StrictModel):
 def load_quota_spend_ledger_resolved(
     *,
     live_path: Path | None = None,
-    fixtures_path: Path = QUOTA_SPEND_LEDGER_FIXTURES,
+    fixtures_path: Path | None = None,
 ) -> ResolvedQuotaSpendLedger:
     """Load the live telemetry ledger when present, else the checked-in fixtures.
 
@@ -1170,7 +1170,9 @@ def load_quota_spend_ledger_resolved(
     ``HAPAX_QUOTA_SPEND_LEDGER_LIVE`` override resolve it themselves and pass
     ``live_path`` explicitly.
     """
-
+    fixtures_path = resolve_config_path(
+        fixtures_path, "quota-spend-ledger-fixtures.json"
+    )
     candidate = live_path if live_path is not None else DEFAULT_QUOTA_SPEND_LEDGER_LIVE
     live_error: str | None = None
     if candidate.exists():

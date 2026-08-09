@@ -39,9 +39,10 @@ Source-visible commercial core consumed by Reins and extracted from the council 
 # hapax-spine
 
 `hapax-spine` is the source-available mechanism layer behind Reins and the
-Hapax Systems governance runtime. It is published so dispatch, receipts,
-quotas, EDT state, and projections can be inspected as separate mechanisms
-rather than presented as a vague agent platform claim.
+Hapax Systems governance runtime — the governed core that turns a stream of
+work events into scored, routable, auditable state. It is published so
+dispatch, receipts, quotas, EDT state, and projections can be inspected as
+separate mechanisms rather than presented as a vague agent platform claim.
 
 ## Mechanism Map
 
@@ -53,6 +54,42 @@ rather than presented as a vague agent platform claim.
 | Quota arithmetic | Tracks constrained provider, route, and spend capacity. | Makes capacity a governed input rather than an invisible runtime assumption. |
 | EDT and projections | Folds event state into operational views. | Gives Reins and downstream surfaces compact state without making the projection itself authoritative. |
 
+It is dependency-light (`pydantic`, `pyyaml`) and consumed by
+[reins](https://github.com/hapax-systems/reins) (the cockpit) and, internally,
+by hapax-council.
+
+## Install
+
+```sh
+uv add hapax-spine        # or: pip install hapax-spine
+```
+
+## Use
+
+```python
+import hapax.spine.dispatcher_policy as dp
+import hapax.spine.platform_capability_registry as reg
+
+# The instance supplies its config-DATA dir (the registry, quota fixtures, EDT knobs)
+# via HAPAX_SPINE_CONFIG_DIR (or pass an explicit path). Import is always safe; only an
+# unconfigured *load* fails loud.
+registry = reg.load_platform_capability_registry()          # env-injected path
+sources  = dp.load_dispatch_policy_sources(registry_path=my_registry_json)  # or explicit
+```
+
+Set `HAPAX_SPINE_CONFIG_DIR` (and `HAPAX_SPINE_REPO_ROOT`) to your instance's config directory.
+
+## Honest scope
+
+hapax-spine ships the **mechanism**. In v0.1.x the instance **taxonomy** — the routing-class keyspace,
+the reqvec dimensions, the provider/payment rails — ships as *council-default vocabulary*, not yet fully
+injected (see the v1.1 instance-free milestone). So a second instance runs the same engine but currently
+inherits those defaults; making the taxonomy (and the governance axioms) fully injectable is on the
+roadmap. We don't claim capability-/axiom-agnosticism the code doesn't yet deliver.
+
+The 15 modules were extracted history-preserving from hapax-council; the wheel is agents/logos-free and
+imports only `pydantic` + `pyyaml`.
+
 ## Boundary
 
 This repository is a mechanism extraction, not the whole Hapax estate and not
@@ -62,6 +99,7 @@ released.
 
 ## License
 
-Business Source License 1.1. Commercial and hosted-service rights remain
-reserved by the license grant until the change license/date applies. See
-[LICENSE](LICENSE).
+Source-available under the **Business Source License 1.1** (see
+[LICENSE](LICENSE)): free for all non-competing use — self-host, build on it,
+run your own instance — converting to Apache-2.0 on the change date. Only
+offering it as a competing hosted service is reserved.

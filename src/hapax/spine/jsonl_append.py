@@ -19,10 +19,10 @@ routed writer reproduces its pre-change bytes EXACTLY — the field-fix and the
 event-sourcing replay round-trip stay uncoupled from this change.
 
 ``fcntl.flock`` is reliable only on a local filesystem; over NFS/CIFS it is
-silently unreliable. All current ledgers are HOME-local single-host (podium
-``~/.cache``). A future cross-host ledger (appendix, 192.168.68.50) MUST use a
-single designated writer host or the SQLite/WAL canonical log — flock is
-INSUFFICIENT cross-host; this helper introduces no cross-host write path.
+silently unreliable. All current ledgers are HOME-local single-host
+(``~/.cache``). A future cross-host ledger MUST use a single designated writer
+host or the SQLite/WAL canonical log — flock is INSUFFICIENT cross-host; this
+helper introduces no cross-host write path.
 
 The system ``flock(1)`` (util-linux) and ``fcntl.flock(2)`` both place a kernel
 flock ``LOCK_EX`` on the inode, so a shell writer that locks the SAME sidecar
@@ -59,7 +59,10 @@ def _make_serializer(
 ) -> Serializer:
     def _serialize(record: Record) -> str:
         return json.dumps(
-            dict(record), ensure_ascii=ensure_ascii, separators=separators, sort_keys=sort_keys
+            dict(record),
+            ensure_ascii=ensure_ascii,
+            separators=separators,
+            sort_keys=sort_keys,
         )
 
     return _serialize
