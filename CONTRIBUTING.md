@@ -1,0 +1,25 @@
+# Contributing
+
+This repository does not accept contributions through GitHub. Hapax is operated as a single-operator research estate; public repository affordances are for inspection, citation, and boundary review, not contributor onboarding.
+
+The `single_user` axiom is a boundary: it prevents public maintainer roles, community governance, and external patch queues from becoming part of this repository's authority model.
+
+## Why
+
+`hapax-spine` is a source-available runtime mechanism. It is published for inspection and evaluation without turning the mechanism into a community-maintained framework.
+
+## What this means in practice
+
+- Issues are redirect-only; `.github/ISSUE_TEMPLATE/config.yml` disables blank issues.
+- Pull requests are not an intake path for this repository.
+- Repositories disable Discussions and Wiki except for the `hapax-constitution` Wiki, which mirrors the axiom registry.
+- Funding links, if present, are no-perk research support only.
+- This file is rendered from `hapax-constitution/sdlc/render/`; edits are overwritten on next render.
+
+## If you are reading this because you found a bug
+
+Use the repository as a source-available inspection surface. Integration help and framework-style issue triage are out of scope for GitHub.
+
+## Citation
+
+If your research engages with this codebase, cite via `CITATION.cff` (Citation File Format v1.2.0). Archival DOI lives in `.zenodo.json`.

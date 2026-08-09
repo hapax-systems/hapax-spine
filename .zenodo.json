@@ -1,0 +1,26 @@
+{
+  "title": "hapax-spine",
+  "description": "SDLC-runtime mechanism package for Hapax/Reins: route projection, capability receipts, quota arithmetic, and gate-event production.",
+  "creators": [
+    {
+      "name": "Hapax Systems"
+    }
+  ],
+  "license": "other-closed",
+  "access_right": "open",
+  "upload_type": "software",
+  "keywords": [
+    "governance",
+    "sdlc",
+    "research-software",
+    "single-operator"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/hapax-systems/hapax-council",
+      "relation": "isDerivedFrom",
+      "scheme": "url"
+    }
+  ],
+  "notes": "Repository license: Business Source License 1.1."
+}
