@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from shared.route_metadata_schema import (
+from hapax.spine.route_metadata_schema import (
     AuthorityLevel,
     BenchmarkGap,
     ClassificationEnvelope,
@@ -723,12 +723,12 @@ def test_hkp_classification_is_non_authoritative_support_only() -> None:
 
 
 def test_supply_history_projects_benchmark_calibration_and_bounded_overhead_score() -> None:
-    from shared.dispatcher_policy import _fixed_route_overhead_fit_score
-    from shared.platform_capability_registry import (
+    from hapax.spine.dispatcher_policy import _fixed_route_overhead_fit_score
+    from hapax.spine.platform_capability_registry import (
         build_supply_vector,
         load_platform_capability_registry,
     )
-    from shared.route_metadata_schema import BenchmarkCoverage, FixedRouteOverhead
+    from hapax.spine.route_metadata_schema import BenchmarkCoverage, FixedRouteOverhead
 
     registry = load_platform_capability_registry()
     route = registry.require("codex.headless.full")
@@ -807,8 +807,8 @@ def test_demand_vector_freshness_stales_when_frontmatter_changes(tmp_path) -> No
 def test_demand_axis_vocabulary_pins_the_registry_enums() -> None:
     """FORK 1 closed without an import cycle: the lower module's demand value tuples MUST track
     the supply-side Effort/ContextMode enums exactly (drift either way fails this pin)."""
-    from shared.platform_capability_registry import ContextMode, Effort
-    from shared.route_metadata_schema import (
+    from hapax.spine.platform_capability_registry import ContextMode, Effort
+    from hapax.spine.route_metadata_schema import (
         _CONTEXT_MODE_DEMAND_VALUES,
         _EFFORT_DEMAND_VALUES,
     )
