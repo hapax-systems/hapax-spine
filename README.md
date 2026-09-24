@@ -58,10 +58,21 @@ It is dependency-light (`pydantic`, `pyyaml`) and consumed by
 [reins](https://github.com/hapax-systems/reins) (the cockpit) and, internally,
 by hapax-council.
 
+## Published releases
+
+The [v0.1.1 GitHub release](https://github.com/hapax-systems/hapax-spine/releases/tag/v0.1.1)
+documents call-time configuration-path resolution at that tag. It is a
+versioned snapshot; later source on `main` is not part of that release.
+
+[Version 0.1.3 is published on PyPI](https://pypi.org/project/hapax-spine/0.1.3/)
+(checked September 24, 2026). This package version and the v0.1.1 GitHub
+release are separate published artifacts; use their versioned records when
+comparing them.
+
 ## Install
 
 ```sh
-uv add hapax-spine        # or: pip install hapax-spine
+uv add hapax-spine
 ```
 
 ## Use
