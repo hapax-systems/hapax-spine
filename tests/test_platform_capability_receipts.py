@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from shared.dispatcher_policy import (
+from hapax.spine.dispatcher_policy import (
     DispatchAction,
     RouteAuthorityReceipt,
     build_dispatch_request,
@@ -20,13 +20,35 @@ from shared.dispatcher_policy import (
     route_authority_receipt_payload_hash,
     route_decision_receipt_payload,
 )
-from shared.platform_capability_receipts import PLATFORM_CAPABILITY_RECEIPT_DIR_ENV
-from shared.platform_capability_registry import load_platform_capability_registry
+from hapax.spine.platform_capability_receipts import PLATFORM_CAPABILITY_RECEIPT_DIR_ENV
+from hapax.spine.platform_capability_registry import load_platform_capability_registry
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "hapax-platform-capability-receipts"
-REGISTRY = REPO_ROOT / "config" / "platform-capability-registry.json"
-QUOTA_LEDGER = REPO_ROOT / "config" / "quota-spend-ledger-fixtures.json"
+import pytest
+
+from hapax.spine._config import default_config_path
+
+# spine ships no config/ dir -- the instance INJECTS it via HAPAX_SPINE_CONFIG_DIR
+REGISTRY = default_config_path("platform-capability-registry.json")
+QUOTA_LEDGER = default_config_path("quota-spend-ledger-fixtures.json")
+
+# The council-instance CLIs. Spine is the MECHANISM package ("instance taxonomy injected,
+# not baked") and deliberately ships no scripts/ dir, so these are reachable only when a
+# council checkout sits alongside. Gated, never silently passed.
+COUNCIL_ROOT = Path(__file__).resolve().parents[2] / "hapax-council"
+SCRIPT = COUNCIL_ROOT / "scripts" / "hapax-platform-capability-receipts"
+# The council CLI validates with COUNCIL's registry model, which cannot accept spine's
+# fixture: spine's Platform enum carries agy/glmcp/grok that no council branch has, and
+# spine's routes carry three fields council's extra="forbid" model rejects. Feed the
+# council CLI council's OWN registry; spine's loader keeps the injected fixture.
+COUNCIL_REGISTRY = COUNCIL_ROOT / "config" / "platform-capability-registry.json"
+
+pytestmark = pytest.mark.skipif(
+    not SCRIPT.is_file(),
+    reason=(
+        "council-instance CLI scripts/hapax-platform-capability-receipts is not part of the "
+        "spine mechanism package (instance taxonomy is injected, not baked)"
+    ),
+)
 NOW = "2026-05-17T19:55:00Z"
 NOW_DT = datetime.fromisoformat(NOW.replace("Z", "+00:00"))
 API_NOW = "2026-06-04T16:00:00Z"
@@ -47,7 +69,7 @@ def _run_receipts(
             sys.executable,
             str(SCRIPT),
             "--registry",
-            str(REGISTRY),
+            str(COUNCIL_REGISTRY),
             "--receipt-dir",
             str(tmp_path),
             "--platform",
@@ -210,6 +232,14 @@ def test_fresh_subscription_receipt_allows_dispatch_without_rollback(
     assert decision.registry_freshness_green is True
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "spine's registry declares platforms council's tooling does not know "
+        "(agy/glmcp/grok vs council's antigrav/gemini). strict=True so this "
+        "self-retires: if council gains them the test XPASSes and fails here."
+    ),
+)
 def test_agy_receipt_clears_unobservable_quota_catch22(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -759,7 +789,7 @@ def test_runtime_actuation_receipt_allows_dimensional_runtime_candidate(
     assert not any(veto.code == "mutation_surface_mismatch" for veto in candidate.vetoes)
 
 
-MINT_SCRIPT = REPO_ROOT / "scripts" / "hapax-mint-route-authority-receipt"
+MINT_SCRIPT = COUNCIL_ROOT / "scripts" / "hapax-mint-route-authority-receipt"
 
 
 def _mint_route_authority_receipt(

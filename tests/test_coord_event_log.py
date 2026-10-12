@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.coord_event_log import (
+from hapax.spine.coord_event_log import (
     DEFAULT_JSONL_MIRROR,
     DEFAULT_LEDGER_DB,
     DEFAULT_SPOOL_DIR,
@@ -18,7 +18,7 @@ from shared.coord_event_log import (
     Snapshot,
     snapshot_id_for,
 )
-from shared.coord_projection import CoordProjection
+from hapax.spine.coord_projection import CoordProjection
 
 
 def _event(event_id: str = "evt-1") -> CoordEvent:
@@ -68,7 +68,7 @@ def test_default_paths_are_a_user_writable_coord_ledger_outside_worktrees() -> N
 
 
 def test_coord_base_dir_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from shared.coord_event_log import coord_base_dir, default_grant_dir, default_grant_key
+    from hapax.spine.coord_event_log import coord_base_dir, default_grant_dir, default_grant_key
 
     for var in ("HAPAX_COORD_DIR", "HAPAX_COORD_GRANT_DIR", "HAPAX_COORD_GRANT_KEY"):
         monkeypatch.delenv(var, raising=False)
@@ -100,7 +100,7 @@ def test_coord_base_dir_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 def test_provision_coord_tree_creates_writable_tree_and_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from shared.coord_event_log import default_event_log, provision_coord_tree
+    from hapax.spine.coord_event_log import default_event_log, provision_coord_tree
 
     base = tmp_path / "coord"
     monkeypatch.setenv("HAPAX_COORD_DIR", str(base))
@@ -130,7 +130,7 @@ def test_provision_coord_tree_creates_writable_tree_and_key(
 
 
 def test_provision_coord_tree_fails_loud_when_unwritable(tmp_path: Path) -> None:
-    from shared.coord_event_log import CoordEventLogError, provision_coord_tree
+    from hapax.spine.coord_event_log import CoordEventLogError, provision_coord_tree
 
     # A regular file standing where the base dir must go: mkdir raises, and the
     # provisioner must surface it LOUDLY rather than silently degrade.

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from shared.gate_event_producer import (
+from hapax.spine.gate_event_producer import (
     REQUIREMENT_VECTOR_DIMENSIONS,
     _derive_requirement_vector,
     build_gate_event,
     build_requirement_vector,
     resolve_routing_class,
 )
-from shared.route_metadata_schema import MutationSurface, QualityFloor, TaskDemand
+from hapax.spine.route_metadata_schema import MutationSurface, QualityFloor, TaskDemand
 
 
 def _td(**overrides: object) -> TaskDemand:

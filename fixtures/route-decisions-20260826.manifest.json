@@ -1,0 +1,46 @@
+{
+  "adapter_version": "route-decision-cc-task-v1",
+  "created_at_max": "2026-08-27T02:27:23.000000Z",
+  "created_at_min": "2026-08-18T08:23:42.000000Z",
+  "derived_sha256": "1ab12f95f4cbb0202565c1ff86a7cd603a04ca010b9ed7c8093d878776798a1c",
+  "fixture_kind": "historical_selected_field_projection",
+  "parameters": {
+    "duplicate_saturation": 5
+  },
+  "row_count": 619,
+  "selected_projection_distinct_counts": {
+    "authority_allowed": 2,
+    "candidate_snapshot_ref": 609,
+    "created_at": 537,
+    "demand_vector_ref": 111,
+    "quota_evidence_refs": 6,
+    "quota_freshness_green": 2,
+    "registry_freshness_green": 2,
+    "resource_freshness_green": 2,
+    "resource_state_refs": 1,
+    "stale_metadata": 2,
+    "task_id": 108
+  },
+  "selected_source_fields": [
+    "created_at",
+    "task_id",
+    "authority_allowed",
+    "quota_freshness_green",
+    "registry_freshness_green",
+    "resource_freshness_green",
+    "quota_evidence_refs",
+    "resource_state_refs",
+    "candidate_snapshot_ref",
+    "demand_vector_ref",
+    "stale_metadata"
+  ],
+  "source_frontier": "complete frozen ledger through source_sha256",
+  "source_sha256": "0b8f310f46c909246b729b7561c56d6c6880dc8bfffababceea88fdd6b126711",
+  "token_counts": {
+    "quota-ref": 25,
+    "resource-ref": 2,
+    "source": 3,
+    "task": 108
+  },
+  "transform_version": "route-decision-freeze-v1"
+}

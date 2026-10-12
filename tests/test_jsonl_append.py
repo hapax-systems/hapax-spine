@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from shared.jsonl_append import _lock_path, append_jsonl, append_jsonl_lines
+from hapax.spine.jsonl_append import _lock_path, append_jsonl, append_jsonl_lines
 
 
 # --- module-level worker for the concurrency test (fork-safe) ------------------
@@ -192,14 +192,14 @@ class TestByteIdentity:
         assert target.read_text(encoding="utf-8").splitlines()[0] == original
 
     def test_coord_mirror_canonical_json(self, tmp_path: Path) -> None:
-        from shared.coord_event_log import _canonical_json
+        from hapax.spine.coord_event_log import _canonical_json
 
         record = {"sequence": 1, "event_type": "stage", "actor": "eta", "ts": "2026-06-02T05Z"}
         original = _canonical_json(record)
         assert self._written_line(tmp_path, record=record, serialize=_canonical_json) == original
 
     def test_coord_spool_nested_canonical_json(self, tmp_path: Path) -> None:
-        from shared.coord_event_log import _canonical_json
+        from hapax.spine.coord_event_log import _canonical_json
 
         record = {
             "schema_version": 1,

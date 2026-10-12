@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shared.coord_event_log import CoordEvent, CoordEventLog, CoordWriter
+from hapax.spine.coord_event_log import CoordEvent, CoordEventLog, CoordWriter
 
 
 def _log(tmp_path: Path) -> CoordEventLog:
