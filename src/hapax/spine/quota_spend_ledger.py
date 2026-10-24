@@ -32,12 +32,25 @@ DEFAULT_QUOTA_SPEND_LEDGER_LIVE = (
 PAID_CAPACITY_POOLS = frozenset(
     {"api_paid_spend", "bootstrap_budget", "incident_override"}
 )
-RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES = frozenset({"glmcp.review.direct"})
 RECEIPT_BOUNDED_SUBSCRIPTION_PROVIDERS = {
+    "agy.review.direct": "google-antigravity-cli-agy",
     "glmcp.review.direct": "z_ai-glm-coding-plan",
+    "claude.headless.full": "anthropic-claude-subscription",
+    "claude.review.opus": "anthropic-claude-subscription",
+    "claude.interactive.full": "anthropic-claude-subscription",
+    "kimi.interactive.lane": "moonshot-kimi-code-managed",
 }
 CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES = frozenset(
     {"claude.headless.full", "claude.review.opus", "claude.interactive.full"}
+)
+
+RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES = frozenset(
+    {
+        "agy.review.direct",
+        "glmcp.review.direct",
+        "kimi.interactive.lane",
+        *CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES,
+    }
 )
 
 CLAUDE_ADMISSION_OBSERVATIONS = frozenset(
@@ -171,6 +184,193 @@ GLMCP_ADMISSION_SECRETISH_RE = re.compile(
 )
 GLMCP_ADMISSION_WITNESS_REF_RE = re.compile(r":witness:([^:]+):supported_tool:")
 GLMCP_ADMISSION_SUPPORTED_TOOL_REF_RE = re.compile(r":supported_tool:([a-z0-9_.+-]+):")
+
+
+AGY_ADMISSION_SUPPORTED_TOOL = "hapax-agy-reviewer"
+
+def agy_review_model_binding() -> tuple[str, str]:
+    """Resolve the declared model at use, never at import or by availability.
+
+    The base descriptor supplies the compatibility alias. Catalog availability
+    and review-family qualification remain separate admission requirements.
+    """
+    path = resolve_config_path(None, "platform-capability-registry.json")
+    try:
+        registry = json.loads(path.read_text(encoding="utf-8"))
+        routes = [r for r in registry["routes"] if r["route_id"] == "agy.review.direct"]
+        if len(routes) != 1:
+            raise ValueError("expected one agy review route")
+        route = routes[0]
+        base = route["execution_descriptor"]["model_id"]
+        effort = route["execution_descriptor"]["effort"]
+        variants = [
+            v
+            for v in route["descriptor_variants"]
+            if v["knobs_override"].get("model_id", base) == base
+            and v["knobs_override"].get("effort") == effort
+        ]
+        if (
+            len(variants) != 1
+            or not isinstance(variants[0]["blocked_reasons"], list)
+            or variants[0]["blocked_reasons"]
+        ):
+            raise ValueError("expected one unblocked base-model/effort variant")
+        variant_id = variants[0]["variant_id"]
+        if not variant_id.startswith("agy@"):
+            raise ValueError("expected an agy CLI variant")
+        model = variant_id.removeprefix("agy@")
+        if not all(re.fullmatch(r"gemini-[a-z0-9][a-z0-9_.-]*", v) for v in (model, base)):
+            raise ValueError("expected Gemini model bindings")
+        return model, base
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ValueError(
+            "agy review registry binding unavailable or ambiguous; repair the governed "
+            "agy.review.direct base-model/effort variant in "
+            "config/platform-capability-registry.json; no model fallback"
+        ) from exc
+
+def agy_measurement_model(model: str) -> str:
+    """Select only an explicitly declared measurement leaf, without route admission."""
+    path = resolve_config_path(None, "platform-capability-registry.json")
+    try:
+        routes = [
+            r
+            for r in json.loads(path.read_text())["routes"]
+            if r["route_id"] == "agy.review.direct"
+        ]
+        if len(routes) != 1:
+            raise ValueError("ambiguous route")
+        variants = [
+            v for v in routes[0]["descriptor_variants"] if v["variant_id"] == f"agy@{model}"
+        ]
+        if len(variants) != 1:
+            raise ValueError("undeclared measurement model")
+        variant = variants[0]
+        knobs = variant["knobs_override"]
+        if (
+            variant["blocked_reasons"] != ["measurement_only"]
+            or variant.get("scores_inherited_from") is not None
+            or variant["score_delta"]
+            or knobs.get("effort") not in {"low", "medium", "high"}
+            or model != f"{knobs.get('model_id')}-{knobs.get('effort')}"
+            or re.fullmatch(r"gemini-[a-z0-9][a-z0-9_.-]*", model) is None
+        ):
+            raise ValueError("not a measurement-only leaf")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ValueError(
+            "declare an unscored measurement_only agy registry variant; no model fallback"
+        ) from exc
+    return model
+
+AGY_ADMISSION_RECEIPT_LABEL_RE = re.compile(
+    r"\Arelay-receipt:"
+    r"(?:[a-z0-9_.+-]*agy-quota-admission[a-z0-9_.+-]*\.yaml|"
+    r"unsafe-receipt-name-sha256:[0-9a-f]{16})"
+    r":witness:"
+)
+
+AGY_ADMISSION_EVIDENCE_REF_RE = re.compile(r"\A[a-z0-9][a-z0-9_.+-]{2,239}\Z")
+
+AGY_ADMISSION_SECRETISH_RE = re.compile(
+    r"(?:api[_-]?key|bearer|secret|token|sk-[a-z0-9_-]+|[a-z0-9]{32,})",
+    re.IGNORECASE,
+)
+
+AGY_ADMISSION_WITNESS_REF_RE = re.compile(r":witness:([^:]+):supported_tool:")
+
+KIMI_ADMISSION_SUPPORTED_TOOL = "hapax-kimi-quota-admission"
+
+KIMI_ADMISSION_MODEL = "kimi-code/k3"
+
+KIMI_ADMISSION_MODELS = frozenset({KIMI_ADMISSION_MODEL})
+
+KIMI_ADMISSION_RECEIPT_LABEL_RE = re.compile(
+    r"\Arelay-receipt:"
+    r"(?:[a-z0-9_.+-]*kimi-quota-admission[a-z0-9_.+-]*\.yaml|"
+    r"unsafe-receipt-name-sha256:[0-9a-f]{16})"
+    r":witness:"
+)
+
+KIMI_ADMISSION_EVIDENCE_REF_RE = re.compile(r"\A[a-z0-9][a-z0-9_.+-]{2,239}\Z")
+
+KIMI_ADMISSION_SECRETISH_RE = re.compile(
+    r"(?:api[_-]?key|bearer|secret|token|sk-[a-z0-9_-]+|[a-z0-9]{32,})",
+    re.IGNORECASE,
+)
+
+KIMI_ADMISSION_WITNESS_REF_RE = re.compile(r":witness:([^:]+):supported_tool:")
+
+GLMCP_PAYG_PRICE_BASIS_REF = "docs.z.ai-guides-overview-pricing-20260924"
+
+def _subscription_quota_untrusted_admission_evidence_reason(snapshot: QuotaSnapshot) -> str:
+    normalized_route_id = _normalize_route_id(snapshot.route_id)
+    if normalized_route_id == "glmcp.review.direct":
+        return "untrusted_glmcp_admission_evidence"
+    if normalized_route_id == "agy.review.direct":
+        return "untrusted_agy_admission_evidence"
+    if normalized_route_id in CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES:
+        return "untrusted_claude_admission_evidence"
+    if normalized_route_id == "kimi.interactive.lane":
+        return "untrusted_kimi_admission_evidence"
+    return "untrusted_route_admission_evidence"
+
+def _is_agy_admission_evidence_ref(ref: str) -> bool:
+    return (
+        AGY_ADMISSION_RECEIPT_LABEL_RE.match(ref) is not None
+        and _has_safe_agy_admission_witness(ref)
+        and f":supported_tool:{AGY_ADMISSION_SUPPORTED_TOOL}:" in ref
+        and any(f":model:{model}:" in ref for model in agy_review_model_binding())
+        and ":observed_at:" in ref
+        and ":fresh_until:" in ref
+    )
+
+def _is_kimi_admission_evidence_ref(ref: str) -> bool:
+    return (
+        KIMI_ADMISSION_RECEIPT_LABEL_RE.match(ref) is not None
+        and _has_safe_kimi_admission_witness(ref)
+        and f":supported_tool:{KIMI_ADMISSION_SUPPORTED_TOOL}:" in ref
+        and any(f":model:{model}:" in ref for model in KIMI_ADMISSION_MODELS)
+        and ":observed_at:" in ref
+        and ":fresh_until:" in ref
+    )
+
+def _has_safe_agy_admission_witness(ref: str) -> bool:
+    witness_matches = AGY_ADMISSION_WITNESS_REF_RE.findall(ref)
+    if len(witness_matches) != 1:
+        return False
+    witness = witness_matches[0]
+    return (
+        AGY_ADMISSION_EVIDENCE_REF_RE.fullmatch(witness) is not None
+        and AGY_ADMISSION_SECRETISH_RE.search(witness) is None
+    )
+
+def _has_safe_kimi_admission_witness(ref: str) -> bool:
+    witness_matches = KIMI_ADMISSION_WITNESS_REF_RE.findall(ref)
+    if len(witness_matches) != 1:
+        return False
+    witness = witness_matches[0]
+    label = ref.removeprefix("relay-receipt:").split(":witness:", maxsplit=1)[0]
+    label_stem = label.removesuffix(".yaml")
+    return (
+        KIMI_ADMISSION_EVIDENCE_REF_RE.fullmatch(witness) is not None
+        and KIMI_ADMISSION_SECRETISH_RE.search(witness) is None
+        and (
+            label.startswith("unsafe-receipt-name-sha256:")
+            or KIMI_ADMISSION_SECRETISH_RE.search(label_stem) is None
+        )
+    )
+
+def _redact_quota_evidence_ref(route_id: str, ref: str) -> str:
+    redacted = _redact_secretish_quota_evidence_ref(ref)
+    if redacted != ref:
+        return redacted
+    if (
+        route_id in CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES
+        and _is_untrusted_claude_admission_ref_for_evidence(ref)
+    ):
+        digest = hashlib.sha256(ref.encode("utf-8", errors="replace")).hexdigest()[:16]
+        return f"quota-evidence-ref:redacted-untrusted-claude-admission-sha256:{digest}"
+    return ref
 
 
 class QuotaSpendLedgerError(ValueError):
@@ -1612,7 +1812,7 @@ def subscription_quota_state_for_route(
             (f"quota-snapshot:{normalized_route_id}:missing",),
         )
     evidence_refs = tuple(
-        _redact_secretish_quota_evidence_ref(ref)
+        _redact_quota_evidence_ref(normalized_route_id, ref)
         for snapshot in snapshots
         for ref in snapshot.evidence_refs
     ) or (f"quota-snapshot:{normalized_route_id}:no-evidence",)
@@ -1626,16 +1826,30 @@ def subscription_quota_state_for_route(
         for snapshot in snapshots
         if _subscription_quota_missing_required_fresh_until(snapshot)
     )
+    noncurrent_receipt_refs = tuple(
+        f"quota-snapshot:{snapshot.snapshot_id}:claude_receipt_not_current"
+        for snapshot in snapshots
+        if _subscription_quota_missing_current_claude_receipt(snapshot, now=checked_at)
+    )
     untrusted_fresh_refs = tuple(
-        f"quota-snapshot:{snapshot.snapshot_id}:untrusted_glmcp_admission_evidence"
+        "quota-snapshot:"
+        f"{snapshot.snapshot_id}:"
+        f"{_subscription_quota_untrusted_admission_evidence_reason(snapshot)}"
         for snapshot in snapshots
         if _subscription_quota_missing_required_admission_evidence(ledger, snapshot)
+    )
+    missing_payg_spend_gate_refs = tuple(
+        f"quota-snapshot:{snapshot.snapshot_id}:payg_spend_gate_missing_or_ineligible"
+        for snapshot in snapshots
+        if _subscription_quota_missing_required_payg_spend_gate(ledger, snapshot, now=checked_at)
     )
     return _strict_subscription_quota_state(ledger, snapshots, now=checked_at), (
         *evidence_refs,
         *expired_refs,
         *missing_fresh_until_refs,
+        *noncurrent_receipt_refs,
         *untrusted_fresh_refs,
+        *missing_payg_spend_gate_refs,
     )
 
 
@@ -1685,6 +1899,8 @@ def _effective_subscription_quota_state(
     if _subscription_quota_missing_required_fresh_until(snapshot):
         return SubscriptionQuotaState.UNKNOWN
     if _subscription_quota_fresh_until_expired(snapshot, now=now):
+        return SubscriptionQuotaState.STALE
+    if _subscription_quota_missing_current_claude_receipt(snapshot, now=now):
         return SubscriptionQuotaState.STALE
     return snapshot.subscription_quota_state
 
@@ -1736,16 +1952,27 @@ def _subscription_quota_missing_required_admission_evidence(
     if snapshot.subscription_quota_state is not SubscriptionQuotaState.FRESH:
         return False
     normalized_route_id = _normalize_route_id(snapshot.route_id)
+    if normalized_route_id not in RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES:
+        return False
     expected_provider = RECEIPT_BOUNDED_SUBSCRIPTION_PROVIDERS.get(normalized_route_id)
     if expected_provider is None:
-        return False
+        return True
     if GLMCP_QUOTA_TELEMETRY_WRITER_REF not in ledger.generated_from:
         return True
     if snapshot.provider != expected_provider:
         return True
-    return not any(
-        _is_glmcp_admission_evidence_ref(ref) for ref in snapshot.evidence_refs
-    )
+    if normalized_route_id == "glmcp.review.direct":
+        return not any(_is_glmcp_admission_evidence_ref(ref) for ref in snapshot.evidence_refs)
+    if normalized_route_id == "agy.review.direct":
+        return not any(_is_agy_admission_evidence_ref(ref) for ref in snapshot.evidence_refs)
+    if normalized_route_id in CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES:
+        return not any(
+            _is_claude_admission_evidence_ref(ref, route_id=normalized_route_id)
+            for ref in snapshot.evidence_refs
+        )
+    if normalized_route_id == "kimi.interactive.lane":
+        return not any(_is_kimi_admission_evidence_ref(ref) for ref in snapshot.evidence_refs)
+    return True
 
 
 def _is_glmcp_admission_evidence_ref(ref: str) -> bool:
@@ -1905,6 +2132,7 @@ def _refs(*values: str | None) -> list[str]:
 
 
 _PYDANTIC_DYNAMIC_ENTRYPOINTS = (
+    QuotaMeasurement._measurement_contract,
     TransitionBudget._budget_contract,
     SpendReceipt._receipt_contract,
     ProviderDependencyRecord._dependency_contract,
