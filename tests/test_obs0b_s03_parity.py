@@ -241,23 +241,48 @@ def test_root_refusals(change, message):
         validate(value)
 
 
+@pytest.mark.parametrize("read", ["validate", "route_map", "require"])
 @pytest.mark.parametrize("conflict", ["same-pool-different-paths", "equal", "nested", "parent"])
-def test_registry_pool_paths_cannot_cross_pool_boundary(conflict):
+def test_registry_pool_paths_cannot_cross_pool_boundary(conflict, read):
     value = root()
     second = bound("claude.headless.full")
     value["routes"][CURRENT_IDS.index("claude.headless.full")] = second
-    validate(value)  # Several routes may share one identically declared pool.
+    valid = validate(value)  # Several routes may share one identically declared pool.
     binding = second["subscription_pool_binding"]
     if conflict == "same-pool-different-paths":
         binding["receipt_dir"] += "-other"
     else:
         binding.update(pool="max-3", **{k: v.replace("max-2", "max-3") for k,v in POOL.items() if k != "pool"})
         second["native_load_set"]["native_home"] = binding["config_home"]
-        validate(value)  # Disjoint pools are valid.
+        valid = validate(value)  # Disjoint pools are valid.
         binding["receipt_dir"] = {"equal": POOL["receipt_dir"] + "/./",
             "nested": POOL["receipt_dir"] + "/nested", "parent": ".cache/hapax/relay"}[conflict]
-    with pytest.raises(ValidationError, match="different paths|share the path"):
-        validate(value)
+    if read != "validate":
+        valid.routes[CURRENT_IDS.index("claude.headless.full")].subscription_pool_binding.receipt_dir = binding["receipt_dir"]
+        reader = valid.route_map if read == "route_map" else lambda: valid.require("claude.review.opus")
+    else:
+        reader = lambda: validate(value)
+    with pytest.raises(ValidationError, match="different paths|share the path") as error:
+        reader()
+    assert "next action:" in str(error.value)
+
+
+@pytest.mark.parametrize("field", ["route_id", "launcher", "sanctioned_wrapper", "model_or_engine",
+                                   "paid_provider", "paid_profile", "source_refs"])
+@pytest.mark.parametrize("marker", [TRUST["shape_id"], "AgenticTrustEvidenceReceiptV1:retained"])
+def test_route_agentic_trust_refusals(field, marker):
+    value = route(native_load_set=copy.deepcopy(LOAD))
+    registry.PlatformCapabilityRoute.model_validate(value)
+    if field == "source_refs":
+        value["native_load_set"][field] = [marker]
+        message = "agentic-trust observation evidence cannot carry a supply policy effect: native_load_set.source_refs"
+    else:
+        value[field] = marker
+        message = ("route_id must equal platform.mode.profile: claude.headless.full" if field == "route_id"
+                   else "agentic-trust evaluator observation identity cannot be an executable registry route")
+    with pytest.raises(ValidationError) as error:
+        registry.PlatformCapabilityRoute.model_validate(value)
+    assert error.value.errors()[0]["msg"] == "Value error, " + message
 
 
 def test_route_map_revalidates_modified_nested_routes():
@@ -284,6 +309,7 @@ def test_resolved_pool_is_frozen_metadata(tmp_path):
 ALLOCATION = set("NativeLoadFile NativeLoadSet PlatformCapabilityRegistry PlatformCapabilityRoute "
     "ResolvedSubscriptionPool SubscriptionPoolBinding CLAUDE_DEFAULT_CONFIG_HOME "
     "REQUIRED_ROUTE_IDS SHARED_RELAY_RECEIPT_HOME".split())
+READ_VALIDATION = 'PlatformCapabilityRegistry.model_validate(self.model_dump(mode="python")).routes'
 
 
 def _parity(filename):
@@ -304,9 +330,13 @@ def _parity(filename):
     expected = definitions(raw.decode())
     actual = definitions(Path(registry.__file__).read_text())
     assert set(expected) == set(actual) == ALLOCATION
+    name = "PlatformCapabilityRegistry"
+    assert actual[name].count(READ_VALIDATION) == 1
+    actual[name] = actual[name].replace(READ_VALIDATION,
+        '(PlatformCapabilityRoute.model_validate(route.model_dump(mode="python")) for route in self.routes)')
     # Preserve pre-existing statement formatting rather than spend patch budget on it.
     assert all(ast.dump(ast.parse(actual[k])) == ast.dump(ast.parse(expected[k])) for k in ALLOCATION)
-    print(json.dumps({"ast_equal_allocated_definitions": len(actual),
+    print(json.dumps({"ast_equal_after_authorized_read_repair": len(actual),
         "byte_equal_definitions": sum(actual[k] == expected[k] for k in ALLOCATION),
         "source_sha256": SOURCE_SHA}))
 
@@ -364,7 +394,8 @@ def _mutations():
                     if "duplicate omitted capability shape ids" in detail:
                         continue  # The canonical duplicate guard also covers this case.
                 if cls.name in new_classes | {"PlatformCapabilityRegistry"} or (
-                    cls.name == "PlatformCapabilityRoute" and ("subscription_pool_binding" in detail or "pool-bound" in detail)):
+                    cls.name == "PlatformCapabilityRoute" and any(
+                        x in detail for x in ("subscription_pool_binding", "pool-bound", "agentic-trust"))):
                     change(cls.name + ":raise:" + str(node.lineno), node, "pass")
             if isinstance(node, ast.AnnAssign) and cls.name in new_classes:
                 annotation = ast.get_source_segment(source, node.annotation)
@@ -390,9 +421,11 @@ def _mutations():
     # The permanent-shape check also refuses absence: break both to permit it.
     relaxed = relaxed.replace('raise ValueError(\n                "platform registry must retain the permanent agentic-trust evidence-only shape"\n            )', 'pass')
     controls.append(("required-omitted-shapes", relaxed.encode()))
-    old = 'PlatformCapabilityRoute.model_validate(route.model_dump(mode="python"))'
+    old = READ_VALIDATION
     assert source.count(old) == 1
-    controls.append(("route-map-revalidation", source.replace(old, "route").encode()))
+    controls.append(("route-map-revalidation", source.replace(old, "self.routes").encode()))
+    controls.append(("cross-route-read", source.replace(old,
+        '[PlatformCapabilityRoute.model_validate(r.model_dump(mode="python")) for r in self.routes]').encode()))
     controls.append(("frozen-resolved-pool", source.replace('@dataclass(frozen=True)\nclass ResolvedSubscriptionPool',
                                                         '@dataclass\nclass ResolvedSubscriptionPool').encode()))
     def run(label):

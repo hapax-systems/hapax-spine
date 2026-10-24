@@ -1481,10 +1481,7 @@ class PlatformCapabilityRegistry(StrictModel):
         return self
 
     def route_map(self) -> dict[str, PlatformCapabilityRoute]:
-        validated = (
-            PlatformCapabilityRoute.model_validate(route.model_dump(mode="python"))
-            for route in self.routes
-        )
+        validated = PlatformCapabilityRegistry.model_validate(self.model_dump(mode="python")).routes
         return {route.route_id: route for route in validated}
 
     def require(self, route_id: str) -> PlatformCapabilityRoute:
