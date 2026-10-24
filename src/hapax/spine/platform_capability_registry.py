@@ -24,6 +24,7 @@ from hapax.spine.agentic_trust_boundary import (
     AGENTIC_TRUST_EVIDENCE_SURFACE_ID,
     agentic_trust_supply_evidence_paths,
     is_agentic_trust_supply_evidence_reference,
+    normalize_supply_admission_identity,
 )
 from hapax.spine.platform_capability_receipts import (
     DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR,
@@ -54,20 +55,22 @@ CAPACITY_INVARIANT = (
 
 REQUIRED_ROUTE_IDS = frozenset(
     {
-        "agy.interactive.full",
         "api.headless.api_frontier",
+        "api.headless.openrouter",
         "api.headless.provider_gateway",
         "claude.headless.full",
         "claude.headless.haiku",
         "claude.headless.opus",
         "claude.headless.sonnet",
+        "claude.review.opus",
         "claude.interactive.full",
+        "kimi.interactive.lane",
         "codex.headless.full",
         "codex.headless.spark",
+        "agy.review.direct",
         "glmcp.review.direct",
         "local_tool.local.worker",
         "vibe.headless.full",
-        "grok.headless.full",
     }
 )
 
@@ -1033,6 +1036,121 @@ class SupplyVector(StrictModel):
     supply_descriptor: SupplyDescriptor | None = None
 
 
+class NativeLoadFile(StrictModel):
+    """One declared input. An unknown digest is explicit, never a match."""
+
+    root: Literal["native_home", "project"]
+    path: str = Field(min_length=1)
+    kind: Literal["instructions", "configuration"]
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    digest_description: str | None = None
+    required: bool = True
+
+    @model_validator(mode="after")
+    def _relative_binding(self) -> Self:
+        from pathlib import PurePosixPath
+
+        path = PurePosixPath(self.path)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("load-set paths must stay within their declared root")
+        return self
+
+
+class NativeLoadSet(StrictModel):
+    """Declared native inputs within the existing route contract.
+
+    Null extension lists mean unobserved, whereas [] deliberately declares none.
+    Host observations do not enforce isolation. OCI construction may constrain
+    inputs, but still cannot attest that a model used delivered instructions.
+    """
+
+    native_home: str = Field(min_length=1)
+    home_env: str | None = None
+    files: list[NativeLoadFile] = Field(min_length=1)
+    memory_scope: str = Field(min_length=1)
+    plugins: list[str] | None = None
+    skills: list[str] | None = None
+    hooks: list[str] | None = None
+    mcp: list[str] | None = None
+    loading_flags: list[str] | None = None
+    source_refs: list[str] = Field(min_length=1)
+
+
+CLAUDE_DEFAULT_CONFIG_HOME = ".claude"
+
+
+SHARED_RELAY_RECEIPT_HOME = ".cache/hapax/relay/receipts"
+
+
+class SubscriptionPoolBinding(StrictModel):
+    """The one subscription pool a Claude route bills, stated rather than inherited.
+
+    Every path is relative to HOME. ``config_home`` is what the route's launcher sets as
+    ``CLAUDE_CONFIG_DIR``; the other four are where that pool's own readings live: its admission
+    receipts, its headless traces, its pace activation marker and its durable pace-ledger root.
+    A reading admits the route only when all five are this pool's.
+    """
+
+    pool: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$")
+    config_home: str = Field(min_length=1)
+    receipt_dir: str = Field(min_length=1)
+    headless_dir: str = Field(min_length=1)
+    pace_activation: str = Field(min_length=1)
+    durable_sink_root: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _distinct_relative_paths(self) -> Self:
+        from pathlib import PurePosixPath
+
+        if re.search(r"(?:^|-)(?:account|billing|customer|invoice|payment)", self.pool):
+            raise ValueError(
+                "pool names a pool, never a billing or account identifier; next action: rename it"
+            )
+        paths = {
+            "config_home": self.config_home,
+            "receipt_dir": self.receipt_dir,
+            "headless_dir": self.headless_dir,
+            "pace_activation": self.pace_activation,
+            "durable_sink_root": self.durable_sink_root,
+        }
+        for name, value in paths.items():
+            path = PurePosixPath(value)
+            if path.is_absolute() or ".." in path.parts or str(path) in {"", "."}:
+                raise ValueError(
+                    f"subscription pool {name} must be a path inside HOME; next action: make it "
+                    "HOME-relative"
+                )
+        normalized = {name: str(PurePosixPath(value)) for name, value in paths.items()}
+        if len(set(normalized.values())) != len(normalized):
+            raise ValueError(
+                "subscription pool paths must be distinct; next action: give each its own path"
+            )
+        if normalized["config_home"] == CLAUDE_DEFAULT_CONFIG_HOME:
+            raise ValueError(
+                "a pool binding names a non-default config home; an unbound route already "
+                "runs on the CLI default; next action: name the pool's own config home"
+            )
+        if normalized["receipt_dir"] == SHARED_RELAY_RECEIPT_HOME:
+            raise ValueError(
+                "a bound pool keeps its receipts outside the shared relay dir; next action: "
+                "declare a pool-named receipt_dir"
+            )
+        return self
+
+
+@dataclass(frozen=True)
+class ResolvedSubscriptionPool:
+    """A route's declared pool binding with its paths resolved under one HOME."""
+
+    route_id: str
+    pool: str
+    config_dir: Path
+    receipt_dir: Path
+    headless_dir: Path
+    pace_activation: Path
+    durable_sink_root: Path
+
+
 class PlatformCapabilityRoute(StrictModel):
     registry_schema: Literal[1] = 1
     route_id: str
@@ -1047,6 +1165,8 @@ class PlatformCapabilityRoute(StrictModel):
     blocked_reasons: list[str] = Field(default_factory=list)
     model_or_engine: str | None
     execution_descriptor: ExecutionDescriptor
+    native_load_set: NativeLoadSet | None = None
+    subscription_pool_binding: SubscriptionPoolBinding | None = None
     descriptor_variants: list[DescriptorVariant] = Field(default_factory=list)
     paid_provider: str | None = None
     paid_profile: str | None = None
@@ -1075,6 +1195,49 @@ class PlatformCapabilityRoute(StrictModel):
         expected = f"{self.platform.value}.{self.mode.value}.{self.profile.value}"
         if self.route_id != expected:
             raise ValueError(f"route_id must equal platform.mode.profile: {expected}")
+
+        if any(
+            is_agentic_trust_supply_evidence_reference(identity)
+            for identity in (
+                self.route_id,
+                self.launcher,
+                self.sanctioned_wrapper,
+                self.model_or_engine,
+                self.paid_provider,
+                self.paid_profile,
+            )
+        ):
+            raise ValueError(
+                "agentic-trust evaluator observation identity cannot be an executable registry route"
+            )
+
+        offending_evidence = agentic_trust_supply_evidence_paths(self.model_dump(mode="python"))
+        if offending_evidence:
+            raise ValueError(
+                "agentic-trust observation evidence cannot carry a supply policy effect: "
+                + ", ".join(offending_evidence)
+            )
+
+        if self.subscription_pool_binding is not None:
+            if (
+                self.platform is not Platform.CLAUDE
+                or self.auth_surface is not AuthSurface.SUBSCRIPTION
+                or self.capacity_pool is not CapacityPool.SUBSCRIPTION_QUOTA
+            ):
+                raise ValueError(
+                    "subscription_pool_binding is valid only on a Claude subscription route; "
+                    "next action: remove it from this route"
+                )
+            load_set = self.native_load_set
+            if (
+                load_set is None
+                or load_set.home_env != "CLAUDE_CONFIG_DIR"
+                or load_set.native_home != self.subscription_pool_binding.config_home
+            ):
+                raise ValueError(
+                    "a pool-bound route's native_load_set must name the same config home "
+                    "through CLAUDE_CONFIG_DIR; next action: align native_home and home_env"
+                )
 
         if self.route_state is RouteState.BLOCKED and not self.blocked_reasons:
             raise ValueError("blocked routes must declare blocked_reasons")
@@ -1190,6 +1353,7 @@ class PlatformCapabilityRegistry(StrictModel):
     capacity_invariant: str
     generated_from: list[str] = Field(min_length=1)
     required_route_ids: list[str] = Field(min_length=1)
+    omitted_capability_shapes: list[CapabilityShapeDescriptor] = Field(min_length=1)
     routes: list[PlatformCapabilityRoute] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -1216,9 +1380,54 @@ class PlatformCapabilityRegistry(StrictModel):
                 f"missing required platform routes: {sorted(missing_routes)}"
             )
 
+        extra_routes = set(route_ids) - required
+        if extra_routes:
+            raise ValueError(f"routes not declared in required_route_ids: {sorted(extra_routes)}")
+
         if self.capacity_invariant != CAPACITY_INVARIANT:
             raise ValueError(
                 "capacity invariant drifted from governed dispatch invariant"
+            )
+
+        shape_ids = [shape.shape_id for shape in self.omitted_capability_shapes]
+        duplicate_shapes = sorted(
+            {shape_id for shape_id in shape_ids if shape_ids.count(shape_id) > 1}
+        )
+        if duplicate_shapes:
+            raise ValueError(f"duplicate omitted capability shape ids: {duplicate_shapes}")
+        if AGENTIC_TRUST_EVIDENCE_SURFACE_ID not in shape_ids:
+            raise ValueError(
+                "platform registry must retain the permanent agentic-trust evidence-only shape"
+            )
+
+        canonical_shape_ids: dict[str, list[str]] = {}
+        for shape_id in shape_ids:
+            canonical_shape_ids.setdefault(
+                normalize_supply_admission_identity(shape_id), []
+            ).append(shape_id)
+        canonical_shape_duplicates = {
+            identity: raw_ids
+            for identity, raw_ids in canonical_shape_ids.items()
+            if len(raw_ids) > 1
+        }
+        if canonical_shape_duplicates:
+            raise ValueError(
+                "omitted capability shape ids collide after canonicalization: "
+                f"{canonical_shape_duplicates}"
+            )
+
+        reserved_route_ids = {
+            normalize_supply_admission_identity(route_id) for route_id in route_ids
+        }
+        route_like_shapes = sorted(
+            shape_id
+            for shape_id in shape_ids
+            if normalize_supply_admission_identity(shape_id) in reserved_route_ids
+        )
+        if route_like_shapes:
+            raise ValueError(
+                "omitted capability shape ids must not collide with admitted route ids: "
+                f"{route_like_shapes}"
             )
 
         # descriptor variant provenance is a cross-route reference; only the registry can
@@ -1234,10 +1443,46 @@ class PlatformCapabilityRegistry(StrictModel):
                         "(or be null to inherit the variant's own route)"
                     )
 
+        # One pool name is one set of paths, and no two pools share a path: a reading found in a
+        # pool's dir is that pool's and no other's. Paths are compared normalized, and a path
+        # nested in (or around) another pool's is shared too.
+        from pathlib import PurePosixPath
+
+        pools: dict[str, SubscriptionPoolBinding] = {}
+        claimed: list[tuple[PurePosixPath, str]] = []
+        for route in self.routes:
+            binding = route.subscription_pool_binding
+            if binding is None:
+                continue
+            prior = pools.setdefault(binding.pool, binding)
+            if prior != binding:
+                raise ValueError(
+                    f"subscription pool {binding.pool!r} is declared with different paths "
+                    f"on {route.route_id}; next action: declare one set of paths per pool"
+                )
+            for path in (
+                binding.config_home,
+                binding.receipt_dir,
+                binding.headless_dir,
+                binding.pace_activation,
+                binding.durable_sink_root,
+            ):
+                candidate = PurePosixPath(path)
+                for held, owner in claimed:
+                    if owner != binding.pool and (
+                        candidate == held or held in candidate.parents or candidate in held.parents
+                    ):
+                        raise ValueError(
+                            f"subscription pools {owner!r} and {binding.pool!r} share the path "
+                            f"{path!r}; next action: give each pool its own, non-nested paths"
+                        )
+                claimed.append((candidate, binding.pool))
+
         return self
 
     def route_map(self) -> dict[str, PlatformCapabilityRoute]:
-        return {route.route_id: route for route in self.routes}
+        validated = PlatformCapabilityRegistry.model_validate(self.model_dump(mode="python")).routes
+        return {route.route_id: route for route in validated}
 
     def require(self, route_id: str) -> PlatformCapabilityRoute:
         return self.route_map()[normalize_route_id(route_id)]
