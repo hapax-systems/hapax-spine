@@ -46,8 +46,8 @@ GLMCP_PAYG_BUDGET_TASK_CLASS = "independent-review"
 GLMCP_PAYG_BUDGET_QUALITY_FLOOR = "frontier_review_required"
 GLMCP_PAYG_ESTIMATED_COST_USD = "0.05"
 GLMCP_PAYG_PRIMARY_ERROR_CLASSES = frozenset({"daily_limit_exhausted", "quota_exhausted"})
-GLMCP_PAYG_PRIMARY_ERROR_CLASS_REF_RE = re.compile(r":primary_error_class:([^:]+)(?=:)")
-GLMCP_PAYG_QUOTA_WALL_REF_RE = re.compile(r":quota_wall_evidence_ref:([^:]+)(?=:)")
+GLMCP_PAYG_PRIMARY_ERROR_CLASS_REF_RE = re.compile(r":primary_error_class:([^:]*)(?=:|$)")
+GLMCP_PAYG_QUOTA_WALL_REF_RE = re.compile(r":quota_wall_evidence_ref:([^:]*)(?=:|$)")
 PROVIDER_BALANCE_FIELDS = (
     "provider_balance_usd",
     "provider_balance_observed_at",

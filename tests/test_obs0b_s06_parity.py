@@ -232,6 +232,11 @@ def test_current_glm_witnesses(payg,model):
     ('error',None), ('wall',None), ('error','transport_error'), ('wall','sk-fixture'),
     ('wall','/private/path'), ('error','quota_exhausted:primary_error_class:quota_exhausted'),
     ('wall','wall.yaml:quota_wall_evidence_ref:wall2.yaml'),
+    ('error',''), ('wall',''),
+    ('error',':primary_error_class:quota_exhausted'),
+    ('error','quota_exhausted:primary_error_class:'),
+    ('wall',':quota_wall_evidence_ref:wall.yaml'),
+    ('wall','wall.yaml:quota_wall_evidence_ref:'),
     ('endpoint','https://api.z.ai/api/paas/v4:endpoint:https://api.z.ai/api/coding/paas/v4'),
 ])
 def test_payg_field_refusal(field,value):
@@ -243,10 +248,12 @@ def test_payg_field_refusal(field,value):
     assert not q._is_glmcp_admission_evidence_ref(ref)
 
 
+@pytest.mark.parametrize('payg', [False,True])
 @pytest.mark.parametrize('extra', ['primary_error_class:quota_exhausted:',
-                                  'quota_wall_evidence_ref:wall.yaml:'])
-def test_coding_plan_rejects_payg_fields(extra):
-    ref=reference(payg=False)+':'+extra
+    'quota_wall_evidence_ref:wall.yaml:', 'primary_error_class::', 'quota_wall_evidence_ref::',
+    'primary_error_class:', 'quota_wall_evidence_ref:'])
+def test_rejects_extra_payg_fields(payg,extra):
+    ref=reference(payg=payg)+':'+extra
     assert not q._has_glmcp_payg_witness_fields_for_endpoint(ref)
     assert not q._is_glmcp_admission_evidence_ref(ref)
 
@@ -352,13 +359,15 @@ def _mutations():
         ('GLMCP_PAYG_ESTIMATED_COST_USD = "0.05"','GLMCP_PAYG_ESTIMATED_COST_USD = "0.04"'),
         ('"task_id": task_id,','"task_id": "wrong-task",'),
         ('request.task_id,','"wrong-task",'),
-        ('r":primary_error_class:([^:]+)(?=:)"','r":primary_error_class:([^:]+):"'),
-        ('r":quota_wall_evidence_ref:([^:]+)(?=:)"','r":quota_wall_evidence_ref:([^:]+):"'),
         ('if witnesses & _glmcp_payg_spend_receipt_witness_refs(receipt)','if True'),
         ('decision.budget_id == receipt.budget_id','True'),
         ('required_refs.issubset(set(snapshot.evidence_refs))','True'),
         ('if _subscription_quota_missing_required_payg_spend_gate(ledger, snapshot, now=now):','if False:'),
     ]
+    for field in ('primary_error_class','quota_wall_evidence_ref'):
+        old=f'r":{field}:([^:]*)(?=:|$)"'
+        for new in (old.replace('*','+'),old.replace('|$',''),old.replace('(?=:|$)',':')):
+            replacements.append((old,new))
     for old,new in replacements:
         assert source.count(old)==1,old
         controls.append((old,source.replace(old,new).encode()))
