@@ -16,6 +16,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from hapax.spine.agentic_trust_boundary import is_syntactically_typed_policy_evidence_reference
+
 DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR = (
     Path.home() / ".cache" / "hapax" / "platform-capability-receipts"
 )
@@ -66,6 +68,14 @@ class ToolEvidence(StrictReceiptModel):
     authority_use: list[str] = Field(default_factory=list)
     evidence_ref: str
 
+    @model_validator(mode="after")
+    def _evidence_reference_retains_its_type(self) -> Self:
+        if not is_syntactically_typed_policy_evidence_reference(self.evidence_ref):
+            raise ValueError(
+                "tool evidence_ref must be a namespaced non-observation policy reference"
+            )
+        return self
+
 
 class SurfaceEvidence(StrictReceiptModel):
     status: EvidenceStatus
@@ -80,6 +90,12 @@ class SurfaceEvidence(StrictReceiptModel):
         parse_duration_spec(self.stale_after)
         if self.status is EvidenceStatus.OBSERVED and not self.evidence_refs:
             raise ValueError("observed surface evidence requires evidence_refs")
+        if any(
+            not is_syntactically_typed_policy_evidence_reference(ref) for ref in self.evidence_refs
+        ):
+            raise ValueError(
+                "surface evidence_refs must be namespaced non-observation policy references"
+            )
         if self.status is not EvidenceStatus.OBSERVED and not self.reason_codes:
             raise ValueError("non-observed surface evidence requires reason_codes")
         return self
@@ -94,6 +110,47 @@ class ProviderDocsEvidence(StrictReceiptModel):
     @model_validator(mode="after")
     def _duration_is_valid(self) -> Self:
         parse_duration_spec(self.stale_after)
+        if any(not is_syntactically_typed_policy_evidence_reference(ref) for ref in self.refs):
+            raise ValueError(
+                "provider-doc refs must be namespaced non-observation policy references"
+            )
+        return self
+
+
+class BareHostCliProbeReceiptV1(StrictReceiptModel):
+    """Evidence-only landing for one bare-host CLI observation.
+
+    These receipts are not ``PlatformCapabilityReceipt`` rows and must not be
+    written as top-level ``*.json`` in the route-overlay directory: that loader
+    glob-parses every such file as a platform receipt.
+    """
+
+    receipt_schema: Literal[1] = RECEIPT_SCHEMA_VERSION
+    receipt_class: Literal["BareHostCliProbeReceiptV1"] = "BareHostCliProbeReceiptV1"
+    receipt_id: str
+    host: str
+    cli: str
+    shape_id: str
+    outcome: Literal["observed", "absent", "not_observable"]
+    observed_at: datetime | None
+    stale_after: str
+    demand_eligible: Literal[False] = False
+    evidence_refs: list[str] = Field(default_factory=list)
+    blocked_reasons: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _not_supply_and_duration_is_valid(self) -> Self:
+        parse_duration_spec(self.stale_after)
+        if self.demand_eligible:
+            raise ValueError("bare-host CLI probe receipts cannot be demand_eligible")
+        if self.outcome == "observed" and self.observed_at is None:
+            raise ValueError("observed bare-host receipts require observed_at")
+        if self.outcome != "observed" and self.observed_at is not None:
+            raise ValueError("unobserved bare-host receipts must not carry observed_at")
+        if self.outcome == "absent" and not self.evidence_refs:
+            raise ValueError("absent CLI receipts require a negative-probe evidence_ref")
+        if self.outcome == "not_observable" and self.evidence_refs:
+            raise ValueError("not-observable receipts must not cite a probe as evidence")
         return self
 
 
@@ -106,7 +163,11 @@ class PlatformCapabilityReceipt(StrictReceiptModel):
     stale_after: str
     cli: CliEvidence
     wrapper: WrapperEvidence
+    route_wrappers: dict[str, WrapperEvidence] = Field(default_factory=dict)
     config_refs: list[ConfigEvidence] = Field(default_factory=list)
+    # Support observations only; these never establish route eligibility or
+    # semantic compliance. Native loading stays unobserved without loader receipts.
+    load_sets: dict[str, dict[str, Any]] = Field(default_factory=dict)
     tool_state: list[ToolEvidence] = Field(default_factory=list)
     mcp_status: list[str] = Field(default_factory=list)
     capability: SurfaceEvidence
@@ -153,6 +214,8 @@ def receipt_is_fresh(
 ) -> bool:
     checked_now = ensure_utc(now or datetime.now(UTC))
     observed_at = ensure_utc(receipt.observed_at)
+    if observed_at > checked_now + timedelta(minutes=1):
+        return False
     return checked_now - observed_at <= parse_duration_spec(receipt.stale_after)
 
 
@@ -194,4 +257,5 @@ _PYDANTIC_DYNAMIC_ENTRYPOINTS = (
     SurfaceEvidence._evidence_or_reason,
     ProviderDocsEvidence._duration_is_valid,
     PlatformCapabilityReceipt._duration_is_valid,
+    BareHostCliProbeReceiptV1._not_supply_and_duration_is_valid,
 )
