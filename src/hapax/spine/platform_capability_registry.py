@@ -19,6 +19,10 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from hapax.spine.agentic_trust_boundary import (
+    agentic_trust_supply_evidence_paths,
+    is_agentic_trust_supply_evidence_reference,
+)
 from hapax.spine.platform_capability_receipts import (
     DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR,
     PLATFORM_CAPABILITY_RECEIPT_DIR_ENV,
@@ -70,6 +74,33 @@ UNKNOWN_PRIVACY_POSTURES = frozenset({"unknown", "public_risk"})
 _DURATION_RE = re.compile(r"^(?P<count>[1-9][0-9]*)(?P<unit>s|m|h|d)$")
 
 
+TASK_CLASS_PATTERN = r"^[a-z0-9][a-z0-9_-]*$"
+_TASK_CLASS_RE = re.compile(TASK_CLASS_PATTERN)
+
+
+def _normalize_task_class_list(entries: list[str], *, field_name: str) -> list[str]:
+    normalized_items: list[str] = []
+    for item in entries:
+        normalized = item.strip().lower()
+        if not normalized or not _TASK_CLASS_RE.fullmatch(normalized):
+            raise ValueError(
+                f"{field_name} entries must be non-empty canonical task-class identifiers "
+                f"matching {TASK_CLASS_PATTERN} (got {item!r}); Next action: remove blank "
+                "or malformed entries and use lowercase alphanumeric, underscore, or hyphen "
+                "task-class identifiers."
+            )
+        normalized_items.append(normalized)
+    return list(dict.fromkeys(normalized_items))
+
+
+
+def _nonempty_string_list(value: object, fallback: str) -> list[str]:
+    if type(value) is list and value and all(type(item) is str and item.strip() for item in value):
+        return list(value)
+    return [fallback]
+
+
+
 class PlatformCapabilityRegistryError(ValueError):
     """Raised when the platform capability registry fails closed."""
 
@@ -80,14 +111,15 @@ class StrictModel(BaseModel):
 
 class Platform(StrEnum):
     AGY = "agy"
+    ANTIGRAV = "antigrav"
     API = "api"
     CLAUDE = "claude"
     CODEX = "codex"
     GEMINI = "gemini"
     GLMCP = "glmcp"
+    KIMI = "kimi"
     LOCAL_TOOL = "local_tool"
     VIBE = "vibe"
-    GROK = "grok"
 
 
 class Mode(StrEnum):
@@ -106,7 +138,9 @@ class Profile(StrEnum):
     FULL = "full"
     HAIKU = "haiku"
     JR = "jr"
+    LANE = "lane"
     LITE = "lite"
+    OPENROUTER = "openrouter"
     OPUS = "opus"
     PROVIDER_GATEWAY = "provider_gateway"
     SONNET = "sonnet"
@@ -157,16 +191,25 @@ class ModelId(StrEnum):
     receipt-only maintenance route)."""
 
     CLAUDE_OPUS_4_8 = "claude-opus-4-8"
+    CLAUDE_OPUS_4_6 = "claude-opus-4-6"
     CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
+    CLAUDE_SONNET_5 = "claude-sonnet-5"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
     CLAUDE_FABLE_5 = "claude-fable-5"
     GPT_5_5 = "gpt-5.5"
+    GPT_6_ASTRA = "gpt-6-astra"
     GPT_5_3_CODEX_SPARK = "gpt-5.3-codex-spark"
+    GPT_OSS_120B = "gpt-oss-120b"
     COMMAND_R_08_2024 = "command-r-08-2024"
+    QWEN3_5_9B = "qwen3.5-9b"
     MISTRAL_MEDIUM_3_5 = "mistral-medium-3.5"
     GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview"
+    GEMINI_4_ARGON = "gemini-4-argon"
+    GEMINI_3_5_FLASH = "gemini-3.5-flash"
     Z_AI_GLM_5 = "z_ai-glm-5"
-    GROK_BUILD = "grok-build"
+    Z_AI_GLM_5_2 = "z_ai-glm-5.2"
+    Z_AI_GLM_5_3 = "z_ai-glm-5.3"
+    KIMI_K3 = "kimi-code/k3"
     UNKNOWN = "unknown"
 
 
@@ -178,6 +221,7 @@ class RouteState(StrEnum):
 class AuthSurface(StrEnum):
     API_KEY = "api_key"
     LOCAL = "local"
+    OAUTH = "oauth"
     OPERATOR_SESSION = "operator_session"
     SUBSCRIPTION = "subscription"
     UNKNOWN = "unknown"
@@ -308,6 +352,14 @@ class ToolAccess(StrictModel):
     browser: bool
     mcp: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _observation_receipt_cannot_create_execution_access(self) -> Self:
+        if any(is_agentic_trust_supply_evidence_reference(item) for item in self.mcp):
+            raise ValueError(
+                "agentic-trust observation evidence cannot be represented as MCP supply"
+            )
+        return self
+
 
 class ExecutionDescriptor(StrictModel):
     """The operator-steered execution axes a capability is selected on, beyond
@@ -336,11 +388,39 @@ class DescriptorVariant(StrictModel):
     scores_inherited_from: str | None = None
     blocked_reasons: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _observation_identity_cannot_be_an_execution_leaf(self) -> Self:
+        if is_agentic_trust_supply_evidence_reference(self.variant_id):
+            raise ValueError(
+                "agentic-trust observation evidence cannot name an executable descriptor variant"
+            )
+        return self
+
 
 class QualityEnvelope(StrictModel):
     eligible_quality_floors: list[QualityFloor] = Field(min_length=1)
     explicit_equivalence_records: list[str] = Field(default_factory=list)
+    allowed_task_classes: list[str] = Field(default_factory=list)
     excluded_task_classes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _observation_receipt_cannot_establish_supply_equivalence(self) -> Self:
+        if any(
+            is_agentic_trust_supply_evidence_reference(ref)
+            for ref in self.explicit_equivalence_records
+        ):
+            raise ValueError(
+                "agentic-trust observation evidence cannot establish supply equivalence"
+            )
+        self.allowed_task_classes = _normalize_task_class_list(
+            self.allowed_task_classes,
+            field_name="allowed_task_classes",
+        )
+        self.excluded_task_classes = _normalize_task_class_list(
+            self.excluded_task_classes,
+            field_name="excluded_task_classes",
+        )
+        return self
 
 
 class ContextLimits(StrictModel):
@@ -362,10 +442,10 @@ class FreshnessSurfaceEvidence(StrictModel):
 
     @model_validator(mode="after")
     def _has_evidence_or_blocker(self) -> Self:
+        if any(is_agentic_trust_supply_evidence_reference(ref) for ref in self.evidence_refs):
+            raise ValueError("agentic-trust observation evidence cannot establish supply freshness")
         if not self.evidence_refs and not self.blocked_reasons:
-            raise ValueError(
-                "freshness surface requires evidence_refs or blocked_reasons"
-            )
+            raise ValueError("freshness surface requires evidence_refs or blocked_reasons")
         return self
 
 
@@ -428,6 +508,10 @@ class ScoreConfidence(StrictModel):
 
     @model_validator(mode="after")
     def _score_evidence_is_freshness_typed(self) -> Self:
+        if any(is_agentic_trust_supply_evidence_reference(ref) for ref in self.evidence_refs):
+            raise ValueError(
+                "agentic-trust observation evidence cannot establish supply confidence"
+            )
         parse_duration_spec(self.stale_after)
         if self.confidence > 0 and not self.evidence_refs:
             raise ValueError("score confidence requires at least one evidence_ref")
@@ -461,6 +545,14 @@ class ToolState(StrictModel):
 
     @model_validator(mode="after")
     def _tool_freshness_duration_is_valid(self) -> Self:
+        if is_agentic_trust_supply_evidence_reference(self.tool_id):
+            raise ValueError(
+                "agentic-trust evaluator observation identity cannot be represented as a supply tool"
+            )
+        if is_agentic_trust_supply_evidence_reference(self.evidence_ref):
+            raise ValueError(
+                "agentic-trust observation evidence cannot establish supply tool availability"
+            )
         parse_duration_spec(self.stale_after)
         return self
 
@@ -499,11 +591,50 @@ class SupplyRoute(StrictModel):
     capability_tier: CapabilityTier
     worker_tier: WorkerTier
 
+    @model_validator(mode="after")
+    def _reserved_observation_identity_is_not_supply(self) -> Self:
+        if any(
+            is_agentic_trust_supply_evidence_reference(identity)
+            for identity in (
+                self.route_id,
+                self.model_fingerprint,
+                self.launcher_contract,
+                self.sanctioned_wrapper,
+            )
+        ):
+            raise ValueError(
+                "agentic-trust evaluator observation identity cannot be represented as a supply route"
+            )
+        return self
+
 
 class SupplyAuthority(StrictModel):
     ceiling: str
     supported_quality_floors: list[QualityFloor] = Field(default_factory=list)
     supported_mutation_surfaces: list[str] = Field(default_factory=list)
+    allowed_task_classes: list[str] = Field(default_factory=list)
+    excluded_task_classes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _normalize_task_classes(self) -> Self:
+        self.allowed_task_classes = _normalize_task_class_list(
+            self.allowed_task_classes,
+            field_name="allowed_task_classes",
+        )
+        self.excluded_task_classes = _normalize_task_class_list(
+            self.excluded_task_classes,
+            field_name="excluded_task_classes",
+        )
+        return self
+
+    def allows_task_class(self, task_class: str | None) -> bool:
+        normalized = (task_class or "").strip().lower()
+        if normalized and not _TASK_CLASS_RE.fullmatch(normalized):
+            return False
+        if self.allowed_task_classes:
+            if not normalized or normalized not in self.allowed_task_classes:
+                return False
+        return not (normalized and normalized in self.excluded_task_classes)
 
 
 class SupplyState(StrictModel):
@@ -526,6 +657,16 @@ class HistoricalPerformance(StrictModel):
         default_factory=LocalCalibrationProvenance
     )
 
+    @model_validator(mode="after")
+    def _observation_receipt_cannot_establish_historical_supply(self) -> Self:
+        offending = agentic_trust_supply_evidence_paths(self.model_dump(mode="python"))
+        if offending:
+            raise ValueError(
+                "agentic-trust observation evidence cannot establish historical supply: "
+                + ", ".join(offending)
+            )
+        return self
+
 
 class OperatorConstraints(StrictModel):
     allowed: bool = True
@@ -540,6 +681,10 @@ class SupplyFreshness(StrictModel):
 
     @model_validator(mode="after")
     def _freshness_duration_is_valid(self) -> Self:
+        if any(is_agentic_trust_supply_evidence_reference(ref) for ref in self.source_refs):
+            raise ValueError(
+                "agentic-trust observation evidence cannot establish projected supply freshness"
+            )
         parse_duration_spec(self.stale_after)
         return self
 
@@ -557,6 +702,24 @@ class SupplyDescriptor(StrictModel):
     reachable_efforts: tuple[str, ...]
     context_mode_to_variant: dict[str, str | None]
     effort_to_variant: dict[str, str | None]
+
+    @model_validator(mode="after")
+    def _observation_identity_cannot_be_selected_as_a_supply_leaf(self) -> Self:
+        identities = (
+            self.base_context_mode,
+            self.base_effort,
+            *self.reachable_context_modes,
+            *self.reachable_efforts,
+            *self.context_mode_to_variant,
+            *(value for value in self.context_mode_to_variant.values() if value is not None),
+            *self.effort_to_variant,
+            *(value for value in self.effort_to_variant.values() if value is not None),
+        )
+        if any(is_agentic_trust_supply_evidence_reference(identity) for identity in identities):
+            raise ValueError(
+                "agentic-trust observation evidence cannot be selected as a supply descriptor leaf"
+            )
+        return self
 
 
 class SupplyVector(StrictModel):
