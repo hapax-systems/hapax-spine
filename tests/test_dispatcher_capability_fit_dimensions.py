@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from shared.dispatcher_policy import (
+from hapax.spine.dispatcher_policy import (
     DIMENSION_WEIGHTS,
     DispatchAction,
     DispatchRequest,
@@ -25,14 +25,14 @@ from shared.dispatcher_policy import (
     _score_candidate,
     evaluate_dispatch_policy,
 )
-from shared.platform_capability_registry import (
+from hapax.spine.platform_capability_registry import (
     DescriptorVariant,
     PlatformCapabilityRoute,
     build_supply_vector,
     load_platform_capability_registry,
     materialize_variant_leaf,
 )
-from shared.route_metadata_schema import DemandVector, build_demand_vector
+from hapax.spine.route_metadata_schema import DemandVector, build_demand_vector
 
 NOW = datetime(2026, 5, 9, 22, 30, tzinfo=UTC)
 
