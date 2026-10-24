@@ -2,6 +2,7 @@
 
 Extracted from Council cef55b5216574f7eb80fd42c887c58e83f7cace0, S02a.
 No intake writer, detector, host binding or provider action is included.
+Safer parity deviation: the reader normalizes duration overflow into typed refusal.
 """
 from __future__ import annotations
 
@@ -315,7 +316,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 def load_capability_surface_delta_file(path: Path) -> CapabilitySurfaceDeltaFile:
     try:
         return CapabilitySurfaceDeltaFile.model_validate(_load_json(path))
-    except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, ValidationError, ValueError, OverflowError) as exc:
         raise CapabilitySurfaceDeltaError(
             "invalid capability-surface delta producer file; repair JSON/schema "
             "or remove the configured producer path before routing can trust it; "

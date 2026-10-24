@@ -203,6 +203,32 @@ def test_invalid_descriptor_duration_refuses(duration):
         m.CapabilitySurfaceDescriptor.model_validate(payload)
 
 
+@pytest.mark.parametrize("duration", ["1000000000d", "24000000000h",
+                                     "1440000000000m", "86400000000000s"])
+def test_duration_overflow_refuses_typed(tmp_path, duration):
+    m = api()
+    payload = copy.deepcopy(PRODUCER)
+    payload["descriptors"][0]["stale_after"] = duration
+    path = tmp_path / "overflow.json"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(m.CapabilitySurfaceDeltaError, match="next action: repair") as caught:
+        m.load_capability_surface_delta_file(path)
+    assert isinstance(caught.value.__cause__, OverflowError)
+
+
+@pytest.mark.parametrize("duration", ["999999999d", "23999999976h",
+                                     "1439999998560m", "86399999913600s"])
+def test_representable_large_duration_still_reads(tmp_path, duration):
+    m = api()
+    payload = copy.deepcopy(PRODUCER)
+    payload["descriptors"][0]["stale_after"] = duration
+    path = tmp_path / "large.json"
+    path.write_text(json.dumps(payload))
+    result = m.load_capability_surface_delta_file(path)
+    assert result.descriptors[0].stale_after == duration
+    assert m.parse_duration_spec(duration) == timedelta(days=999999999)
+
+
 def test_freshness_signature_and_time_normalization():
     m = api()
     value = m.CapabilitySurfaceDescriptor.model_validate(PRODUCER["descriptors"][0])
@@ -317,6 +343,8 @@ def _mutation_controls():
                 "        return next(iter(cls))\n")
     replace("duration-check", "        parse_duration_spec(self.stale_after)\n",
             "        pass\n")
+    replace("duration-overflow-untyped", "ValidationError, ValueError, OverflowError) as exc:",
+            "ValidationError, ValueError) as exc:")
     replace("stale-cannot-fulfill", "    def allows_demand_fulfillment(self) -> bool:\n",
             "    def allows_demand_fulfillment(self) -> bool:\n        return True\n")
     replace("json-object", '        raise CapabilitySurfaceDeltaError(f"{path} did not contain a JSON object")',
@@ -360,9 +388,9 @@ def _verify_council_source(filename):
 
     Supply the bytes from:
       git show cef55b5216574f7eb80fd42c887c58e83f7cace0:shared/capability_surface_delta.py
-    The full input hash binds the source cut; every allocated definition must
-    match exact source text. Run separately from guard mutations so byte parity
-    cannot kill a mutant whose behavioral refusal test would otherwise pass.
+    The full input hash binds the source cut. Fifteen definitions match exact
+    text; the reader adds only the seat-authorized OverflowError catch. Run
+    separately from guard mutations so parity cannot kill a behavioral survivor.
     """
     import ast
     import hashlib
@@ -392,8 +420,15 @@ def _verify_council_source(filename):
     pinned = definitions(source.decode())
     installed = definitions(Path(api().__file__).read_text())
     assert set(installed) == allocation, "allocation drift"
-    assert all(pinned[name] == installed[name] for name in allocation), "definition drift"
-    print(json.dumps({"council_sha256": expected, "exact_definitions": sorted(allocation),
+    reader = "load_capability_surface_delta_file"
+    exact = allocation - {reader}
+    assert all(pinned[name] == installed[name] for name in exact), "definition drift"
+    old = "ValidationError, ValueError) as exc:"
+    assert pinned[reader].count(old) == 1
+    safer = pinned[reader].replace(old, "ValidationError, ValueError, OverflowError) as exc:")
+    assert installed[reader] == safer, "reader deviation exceeds the overflow catch"
+    print(json.dumps({"council_sha256": expected, "exact_definitions": sorted(exact),
+                      "safer_deviation": {reader: "catch OverflowError as typed refusal"},
                       "package_module": api().__file__}), flush=True)
 
 
