@@ -36,6 +36,95 @@ RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES = frozenset({"glmcp.review.direct"})
 RECEIPT_BOUNDED_SUBSCRIPTION_PROVIDERS = {
     "glmcp.review.direct": "z_ai-glm-coding-plan",
 }
+CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES = frozenset(
+    {"claude.headless.full", "claude.review.opus", "claude.interactive.full"}
+)
+
+CLAUDE_ADMISSION_OBSERVATIONS = frozenset(
+    {
+        "subscription_quota_headroom_observed",
+        "operator_confirmed_subscription_headroom",
+    }
+)
+
+CLAUDE_ADMISSION_ACCOUNT_LIVE_QUOTA_SUFFIX = ":account-live-quota:observed"
+
+CLAUDE_ADMISSION_OBSERVATION_PATTERN = "|".join(
+    re.escape(observation) for observation in sorted(CLAUDE_ADMISSION_OBSERVATIONS)
+)
+
+CLAUDE_ADMISSION_WITNESS_PATTERN = (
+    r"claude-(?:subscription-headroom-observed|operator-confirmed-subscription-headroom)-"
+    r"\d{8}t\d{4}(?:\d{2})?z"
+)
+
+CLAUDE_ADMISSION_WITNESS_ALLOWLIST_RE = re.compile(rf"\A{CLAUDE_ADMISSION_WITNESS_PATTERN}\Z")
+
+CLAUDE_ADMISSION_RECEIPT_LABEL_RE = re.compile(
+    r"\Arelay-receipt:"
+    r"(?P<label>[a-z0-9_.+-]*claude-subscription-quota-admission[a-z0-9_.+-]*\.yaml)"
+    r":witness:"
+)
+
+CLAUDE_ADMISSION_COMPOSITE_REF_RE = re.compile(
+    r"\Arelay-receipt:"
+    r"(?P<label>[a-z0-9_.+-]*claude-subscription-quota-admission[a-z0-9_.+-]*\.yaml):"
+    rf"witness:(?P<witness>{CLAUDE_ADMISSION_WITNESS_PATTERN}):"
+    rf"observation:(?P<observation>{CLAUDE_ADMISSION_OBSERVATION_PATTERN}):"
+    r"route_id:(?P<route_id>claude\.(?:headless\.full|review\.opus|interactive\.full)):"
+    r"observed_at:(?P<observed_at>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z):"
+    r"fresh_until:(?P<fresh_until>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)"
+    rf"{re.escape(CLAUDE_ADMISSION_ACCOUNT_LIVE_QUOTA_SUFFIX)}\Z"
+)
+
+CLAUDE_ADMISSION_EVIDENCE_REF_RE = re.compile(r"\A[a-z0-9][a-z0-9_.+-]{2,239}\Z")
+
+CLAUDE_ADMISSION_SECRETISH_RE = re.compile(
+    r"(?:api[_-]?key|bearer|secret|token|sk-[a-z0-9_-]+|[a-z0-9]{32,})",
+    re.IGNORECASE,
+)
+
+CLAUDE_ADMISSION_BILLINGISH_RE = re.compile(
+    r"(?:"
+    r"(?:^|[-_.+:])(?:billing|customer|account|invoice|payment)[a-z0-9]*(?:$|[-_.+:])|"
+    r"(?:^|[-_.+:])subscription[-_.+:]?id[a-z0-9]*(?:$|[-_.+:])|"
+    r"(?:^|[-_.+:])(?:cus|sub|acct|in|ch)[0-9][a-z0-9]*(?:$|[-_.+:])|"
+    r"(?:^|[-_.+:])(?:cus|sub|acct|in|ch)[-_.+:][a-z0-9]+(?:$|[-_.+:])"
+    r")",
+    re.IGNORECASE,
+)
+
+CLAUDE_ADMISSION_LANE_PRESENCE_RE = re.compile(
+    r"(?:"
+    r"hapax-claude-[a-z0-9-]+|session-present|lane-present|lane-exists|"
+    r"(?:^|[-_.+])"
+    r"(?:(?:tmux|sessions?|lanes?|dev)[0-9]*|"
+    r"(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|"
+    r"lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)[0-9]*|"
+    r"cx-[a-z0-9-]+|vbe-[0-9]+)"
+    r"(?:$|[-_.+])"
+    r")",
+    re.IGNORECASE,
+)
+
+CLAUDE_ADMISSION_IGNORED_REASON_RE = re.compile(r"\A[a-z0-9][a-z0-9-]{0,119}\Z")
+
+CLAUDE_ADMISSION_IGNORED_UNSAFE_DETAIL_RE = re.compile(
+    r"(?:"
+    r"(?:^|-)(?:cus|sub|acct|in|ch)-[a-z0-9]+(?:$|-)|"
+    r"(?:^|-)subscription-?id-?[a-z0-9]*[0-9][a-z0-9]*(?:$|-)|"
+    r"(?:^|-)(?:customer|account|invoice|payment|billing)[a-z0-9-]*[0-9][a-z0-9-]*(?:$|-)|"
+    r"(?:^|-)(?:session-present|lane-present|lane-exists)(?:$|-)|"
+    r"(?:^|-)(?:tmux|sessions?|lanes?|dev)[0-9]+(?:$|-)|"
+    r"(?:^|-)(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|"
+    r"lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)[0-9]*(?:$|-)|"
+    r"(?:^|-)(?:cx-[a-z0-9-]+|vbe-[0-9]+|hapax-claude-[a-z0-9-]+)(?:$|-)"
+    r")",
+    re.IGNORECASE,
+)
+
+CLAUDE_ADMISSION_WITNESS_REF_RE = re.compile(r":witness:([^:]+):observation:")
+
 GLMCP_QUOTA_TELEMETRY_WRITER_REF = "scripts/hapax-quota-telemetry-writer"
 GLMCP_ADMISSION_CODING_PLAN_ENDPOINT = "https://api.z.ai/api/coding/paas/v4"
 GLMCP_ADMISSION_PAYG_ENDPOINT = "https://api.z.ai/api/paas/v4"
@@ -1903,6 +1992,130 @@ def _has_glmcp_payg_witness_fields_for_endpoint(ref: str) -> bool:
         primary_error_matches[0] in GLMCP_PAYG_PRIMARY_ERROR_CLASSES
         and GLMCP_ADMISSION_EVIDENCE_REF_RE.fullmatch(wall_ref) is not None
         and GLMCP_ADMISSION_SECRETISH_RE.search(wall_ref) is None
+    )
+
+
+def _subscription_quota_missing_current_claude_receipt(
+    snapshot: QuotaSnapshot, *, now: datetime
+) -> bool:
+    route_id = _normalize_route_id(snapshot.route_id)
+    return (
+        snapshot.subscription_quota_state is SubscriptionQuotaState.FRESH
+        and route_id in CLAUDE_RECEIPT_BOUNDED_SUBSCRIPTION_ROUTES
+        and not any(
+            _is_claude_admission_evidence_ref(ref, route_id=route_id, now=now)
+            for ref in snapshot.evidence_refs
+        )
+    )
+
+
+def _is_claude_admission_evidence_ref(
+    ref: str, *, route_id: str | None = None, now: datetime | None = None
+) -> bool:
+    match = CLAUDE_ADMISSION_COMPOSITE_REF_RE.fullmatch(ref)
+    if match is None or (route_id is not None and match.group("route_id") != route_id):
+        return False
+    try:
+        observed_at = datetime.fromisoformat(match.group("observed_at"))
+        fresh_until = datetime.fromisoformat(match.group("fresh_until"))
+    except ValueError:
+        return False
+    return (
+        observed_at < fresh_until
+        and (now is None or observed_at <= now < fresh_until)
+        and _has_safe_claude_admission_receipt_label(ref)
+        and _has_safe_claude_admission_witness(ref)
+    )
+
+
+def _has_safe_claude_admission_receipt_label(ref: str) -> bool:
+    label_match = CLAUDE_ADMISSION_RECEIPT_LABEL_RE.match(ref)
+    if label_match is None:
+        return False
+    label = label_match.group("label")
+    label_stem = label.removesuffix(".yaml")
+    return (
+        CLAUDE_ADMISSION_SECRETISH_RE.search(label_stem) is None
+        and CLAUDE_ADMISSION_BILLINGISH_RE.search(label_stem) is None
+        and CLAUDE_ADMISSION_LANE_PRESENCE_RE.search(label_stem) is None
+    )
+
+
+def _claude_evidence_receipt_label(ref: str) -> str | None:
+    if not ref.startswith("relay-receipt:"):
+        return None
+    rest = ref.removeprefix("relay-receipt:")
+    if rest.startswith("unsafe-receipt-name-sha256:"):
+        prefix, _, suffix = rest.partition(":")
+        digest, sep, remainder = suffix.partition(":")
+        if not sep:
+            return None
+        label = f"{prefix}:{digest}"
+    else:
+        label, sep, remainder = rest.partition(":")
+        if not sep:
+            return None
+    if remainder.startswith("witness:") or remainder.startswith("ignored:"):
+        return label
+    return None
+
+
+def _is_safe_claude_ignored_evidence_ref(ref: str) -> bool:
+    if ":ignored:" not in ref:
+        return False
+    label = _claude_evidence_receipt_label(ref)
+    if label is None:
+        return False
+    ignored_reason = ref.split(":ignored:", maxsplit=1)[1]
+    if not _is_safe_claude_ignored_reason(ignored_reason):
+        return False
+    if re.fullmatch(r"unsafe-receipt-name-sha256:[0-9a-f]{16}", label) is not None:
+        return True
+    label_stem = label.removesuffix(".yaml")
+    return (
+        CLAUDE_ADMISSION_RECEIPT_LABEL_RE.match(f"relay-receipt:{label}:witness:") is not None
+        and CLAUDE_ADMISSION_SECRETISH_RE.search(label_stem) is None
+        and CLAUDE_ADMISSION_BILLINGISH_RE.search(label_stem) is None
+        and CLAUDE_ADMISSION_LANE_PRESENCE_RE.search(label_stem) is None
+    )
+
+
+def _is_safe_claude_ignored_reason(reason: str) -> bool:
+    return (
+        CLAUDE_ADMISSION_IGNORED_REASON_RE.fullmatch(reason) is not None
+        and CLAUDE_ADMISSION_SECRETISH_RE.search(reason) is None
+        and CLAUDE_ADMISSION_IGNORED_UNSAFE_DETAIL_RE.search(reason) is None
+    )
+
+
+def _is_untrusted_claude_admission_ref_for_evidence(ref: str) -> bool:
+    if _is_claude_admission_evidence_ref(ref) or _is_safe_claude_ignored_evidence_ref(ref):
+        return False
+    if (
+        CLAUDE_ADMISSION_BILLINGISH_RE.search(ref) is not None
+        or CLAUDE_ADMISSION_LANE_PRESENCE_RE.search(ref) is not None
+    ):
+        return True
+    if not ref.startswith("relay-receipt:"):
+        return False
+    return (
+        "claude-subscription-quota-admission" in ref
+        or "unsafe-receipt-name-sha256:" in ref
+        or bool(CLAUDE_ADMISSION_WITNESS_REF_RE.search(ref))
+    )
+
+
+def _has_safe_claude_admission_witness(ref: str) -> bool:
+    witness_matches = CLAUDE_ADMISSION_WITNESS_REF_RE.findall(ref)
+    if len(witness_matches) != 1:
+        return False
+    witness = witness_matches[0]
+    return (
+        CLAUDE_ADMISSION_EVIDENCE_REF_RE.fullmatch(witness) is not None
+        and CLAUDE_ADMISSION_WITNESS_ALLOWLIST_RE.fullmatch(witness) is not None
+        and CLAUDE_ADMISSION_SECRETISH_RE.search(witness) is None
+        and CLAUDE_ADMISSION_BILLINGISH_RE.search(witness) is None
+        and CLAUDE_ADMISSION_LANE_PRESENCE_RE.search(witness) is None
     )
 
 
