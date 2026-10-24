@@ -20,6 +20,8 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from hapax.spine.agentic_trust_boundary import (
+    AGENTIC_TRUST_EVIDENCE_RECEIPT_CLASS,
+    AGENTIC_TRUST_EVIDENCE_SURFACE_ID,
     agentic_trust_supply_evidence_paths,
     is_agentic_trust_supply_evidence_reference,
 )
@@ -395,6 +397,289 @@ class DescriptorVariant(StrictModel):
                 "agentic-trust observation evidence cannot name an executable descriptor variant"
             )
         return self
+
+
+class CapabilityShapeClass(StrEnum):
+    MODEL_PROVIDER = "model_provider"
+    LOCAL_COMPUTE = "local_compute"
+    PUBLICATION_BUS = "publication_bus"
+    MONEY_RAIL = "money_rail"
+    MCP_CONNECTOR = "mcp_connector"
+    ORCHESTRATOR = "orchestrator"
+    SUBAGENT = "subagent"
+    COCKPIT_COMMAND = "cockpit_command"
+    CCTV_RUNNER = "cctv_runner"
+    SELF_INLINE = "self_inline"
+    RESEARCH = "research"
+
+class CapabilityShapeState(StrEnum):
+    EVIDENCE_ONLY = "evidence_only"
+    INTAKE_REQUIRED = "intake_required"
+    MEASUREMENT_PENDING = "measurement_pending"
+    DEPRECATED = "deprecated"
+
+class CapabilitySurfaceDeltaAction(StrEnum):
+    KNOWN_HOLD_FOR_MEASUREMENT = "known_hold_for_measurement"
+    KNOWN_EVIDENCE_ONLY_OBSERVE = "known_evidence_only_observe"
+    MINT_INTAKE = "mint_intake"
+    DEPRECATED_REFUSE = "deprecated_refuse"
+
+class CapabilityShapeFreshnessState(StrEnum):
+    FRESH = "fresh"
+    STALE = "stale"
+    MISSING = "missing"
+    ASSERTED_ONLY = "asserted_only"
+    CONTRADICTORY = "contradictory"
+
+PRIMARY_SOURCE_STOP_CONDITIONS = frozenset(
+    {
+        "bound_exhausted",
+        "unexpected_authentication",
+        "unknown_billing",
+        "unsafe_endpoint",
+        "failed_admission",
+    }
+)
+
+PRIMARY_SOURCE_ADMISSION_REQUIREMENTS = frozenset(
+    {
+        "fresh_route_quota_admission",
+        "task_bound_read_only_egress_receipt",
+        "measured_fetch_path",
+        "independent_review",
+        "seat_first_exposure_ruling",
+    }
+)
+
+_PRIMARY_SOURCE_DOMAIN_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$")
+
+class PrimarySourceCandidateBinding(StrictModel):
+    """Unexposed composition only; neither admitted supply nor an egress grant."""
+
+    state: Literal["candidate_only"]
+    carrier_route_id: Literal["codex.headless.full"]
+    fetch_path: Literal["scripts/hapax-primary-source-fetch"]
+    fetch_path_state: Literal["implemented_unexposed"]
+    receipt_binding_state: Literal["implemented_unexposed"]
+    authority_contract_ref: Literal["shared/dispatcher_policy.py:RouteAuthorityReceipt"]
+    observation_contract_ref: Literal[
+        "shared/platform_capability_receipts.py:PlatformCapabilityReceipt"
+    ]
+    method: Literal["GET"]
+    allowed_domains: list[str] = Field(min_length=1)
+    max_documents: int = Field(strict=True, ge=1, le=12)
+    max_gets: int = Field(strict=True, ge=1, le=30)
+    max_download_bytes: int = Field(strict=True, ge=1, le=104857600)
+    max_incremental_cost_usd: int = Field(strict=True, ge=0, le=0)
+    billing_basis: Literal["subscription_quota_only_no_paid_search"]
+    stop_conditions: list[str]
+    admission_requirements: list[str]
+
+    @model_validator(mode="after")
+    def _bounded_declaration(self) -> Self:
+        for domains, expected in (
+            (self.stop_conditions, PRIMARY_SOURCE_STOP_CONDITIONS),
+            (self.admission_requirements, PRIMARY_SOURCE_ADMISSION_REQUIREMENTS),
+        ):
+            if len(domains) != len(expected) or set(domains) != expected:
+                raise ValueError("restore every declared candidate stop/admission requirement")
+        if len(self.allowed_domains) != len(set(self.allowed_domains)) or any(
+            not _PRIMARY_SOURCE_DOMAIN_RE.fullmatch(domain) for domain in self.allowed_domains
+        ):
+            raise ValueError("use distinct exact DNS names; remove wildcards and duplicates")
+        return self
+
+class PrimarySourceRequestFacts(StrictModel):
+    """Hypothetical next GET, including a redirect hop; no facts are observed here.
+
+    Admission and endpoint facts must be independently established by the future
+    enforcing tool. These inputs are not authenticated receipts or DNS evidence.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    url: str
+    documents_used: int = Field(ge=0)
+    gets_used: int = Field(ge=0)
+    downloaded_bytes: int = Field(ge=0)
+    request_byte_limit: int = Field(gt=0)
+    authentication: Literal["none", "required", "unknown"]
+    billing: Literal["declared_zero_incremental", "paid", "unknown"]
+    endpoint_public: bool | None
+    admission_passed: bool
+    quota_fresh: bool
+
+@dataclass(frozen=True)
+class PrimarySourceCandidateCheck:
+    stop_reasons: tuple[str, ...]
+
+    @property
+    def within_declared_constraints(self) -> bool:
+        return not self.stop_reasons
+
+    @property
+    def execution_authorized(self) -> Literal[False]:
+        return False
+
+class CapabilityShapeDescriptor(StrictModel):
+    """Evidence-only descriptor for an observed but not-yet-admitted capability surface.
+
+    These records intentionally do not extend ``routes``. They let deterministic surface
+    deltas create intake/remediation work without letting carrier labels such as
+    "publication bus" or "OpenRouter" satisfy demand before measured supply leaves and
+    receipts exist.
+    """
+
+    descriptor_schema: Literal[1] = 1
+    shape_id: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    shape_class: CapabilityShapeClass
+    carrier_family: str
+    summary: str
+    harness_shape: str
+    authority_ceiling: AuthorityCeiling
+    shape_state: CapabilityShapeState
+    demand_eligible: bool = False
+    route_ids: list[str] = Field(default_factory=list)
+    resource_semantics: list[str] = Field(min_length=1)
+    spend_semantics: list[str] = Field(min_length=1)
+    observability: list[str] = Field(min_length=1)
+    failure_classes: list[str] = Field(min_length=1)
+    measurement_plan_refs: list[str] = Field(min_length=1)
+    remediation_refs: list[str] = Field(min_length=1)
+    surface_delta_signal: str | None
+    observation_receipt_class: str | None
+    observed_at: datetime | None
+    stale_after: str
+    freshness_state: CapabilityShapeFreshnessState
+    evidence_refs: list[str] = Field(default_factory=list)
+    blocked_reasons: list[str] = Field(default_factory=list)
+    candidate_binding: PrimarySourceCandidateBinding | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def _omitted_shape_is_not_supply(self) -> Self:
+        try:
+            parse_duration_spec(self.stale_after)
+        except OverflowError as exc:
+            raise ValueError(
+                "duration exceeds timedelta range; next action: set stale_after "
+                "to a representable positive duration such as 1h"
+            ) from exc
+        if self.candidate_binding is not None and (
+            self.shape_id != "research.external_primary_source_fetch"
+            or self.authority_ceiling is not AuthorityCeiling.READ_ONLY
+        ):
+            raise ValueError("attach candidate binding only to its read-only research shape")
+        if self.demand_eligible:
+            raise ValueError(
+                "omitted capability shape descriptors cannot be demand_eligible; "
+                "admit measured supply as a route leaf instead"
+            )
+        if self.route_ids:
+            raise ValueError(
+                "omitted capability shape descriptors cannot carry route_ids; link them "
+                "through remediation/measurement refs until admitted supply exists"
+            )
+        if self.surface_delta_signal is not None and not self.surface_delta_signal.strip():
+            raise ValueError("surface_delta_signal must be non-empty when present")
+        if (
+            self.observation_receipt_class is not None
+            and not self.observation_receipt_class.strip()
+        ):
+            raise ValueError("observation_receipt_class must be non-empty when present")
+        if self.shape_state is CapabilityShapeState.EVIDENCE_ONLY:
+            if self.authority_ceiling is not AuthorityCeiling.READ_ONLY:
+                raise ValueError("evidence-only capability shapes must have read_only authority")
+            if self.surface_delta_signal is not None:
+                raise ValueError(
+                    "evidence-only capability shapes cannot emit capability-surface deltas; "
+                    "observations must remain outside the dispatch hold channel"
+                )
+            if self.observation_receipt_class is None:
+                raise ValueError(
+                    "evidence-only capability shapes require an observation_receipt_class"
+                )
+        elif self.surface_delta_signal is None:
+            raise ValueError(
+                "non-evidence-only omitted capability shapes require a surface_delta_signal"
+            )
+        if self.shape_id == AGENTIC_TRUST_EVIDENCE_SURFACE_ID:
+            if self.shape_state is not CapabilityShapeState.EVIDENCE_ONLY:
+                raise ValueError("agentic-trust evaluator is permanently evidence_only")
+            if self.observation_receipt_class != AGENTIC_TRUST_EVIDENCE_RECEIPT_CLASS:
+                raise ValueError("agentic-trust evaluator requires AgenticTrustEvidenceReceiptV1")
+        if self.shape_state is CapabilityShapeState.DEPRECATED and not any(
+            "deprecated" in reason or "retired" in reason for reason in self.blocked_reasons
+        ):
+            raise ValueError(
+                "deprecated capability shapes must declare a deprecated/retired blocker"
+            )
+        if self.observed_at is None and not self.blocked_reasons:
+            raise ValueError("unobserved capability shapes require blocked_reasons")
+        if self.observed_at is not None and not self.evidence_refs:
+            raise ValueError("observed capability shapes require evidence_refs")
+        return self
+
+class CapabilitySurfaceDisposition(StrictModel):
+    surface_id: str
+    action: CapabilitySurfaceDeltaAction
+    demand_eligible: Literal[False] = False
+    descriptor_id: str | None = None
+    reason_codes: tuple[str, ...]
+    remediation_refs: tuple[str, ...]
+
+@dataclass(frozen=True)
+class OmittedShapeFreshnessCheck:
+    shape_id: str
+    ok: bool
+    freshness_state: CapabilityShapeFreshnessState
+    errors: tuple[str, ...]
+    blocked_reasons: tuple[str, ...]
+    evidence_refs: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "shape_id": self.shape_id,
+            "ok": self.ok,
+            "freshness_state": self.freshness_state.value,
+            "errors": list(self.errors),
+            "blocked_reasons": list(self.blocked_reasons),
+            "evidence_refs": list(self.evidence_refs),
+        }
+
+@dataclass(frozen=True)
+class OmittedShapeFreshnessReport:
+    ok: bool
+    checked_at: datetime
+    shape_count: int
+    shapes: tuple[OmittedShapeFreshnessCheck, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "checked_at": self.checked_at.isoformat().replace("+00:00", "Z"),
+            "shape_count": self.shape_count,
+            "shapes": [shape.to_dict() for shape in self.shapes],
+        }
+
+def normalize_capability_surface_identity(value: str) -> str:
+    """Canonicalize observation spelling, removing one optional ``surface.`` prefix."""
+
+    if type(value) is not str:
+        raise TypeError("capability surface identity must be exact text")
+    return value.strip().lower().replace("/", ".").removeprefix("surface.")
+
+def _normalize_surface_token(value: str) -> str:
+    return value.strip().lower().replace("/", ".").replace(" ", "_")
+
+def _shape_signal_token(shape: CapabilityShapeDescriptor) -> str | None:
+    prefix = "capability_surface_delta:"
+    if shape.surface_delta_signal is None:
+        return None
+    signal = shape.surface_delta_signal.strip().lower()
+    if not signal.startswith(prefix):
+        return None
+    return _normalize_surface_token(signal.removeprefix(prefix))
 
 
 class QualityEnvelope(StrictModel):
