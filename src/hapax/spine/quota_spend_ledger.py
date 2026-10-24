@@ -16,7 +16,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_serializer, model_validator
 
 from hapax.spine._config import default_config_path, resolve_config_path
 from hapax.spine.agentic_trust_boundary import is_agentic_trust_supply_evidence_reference
@@ -37,8 +37,28 @@ RECEIPT_BOUNDED_SUBSCRIPTION_PROVIDERS = {
     "glmcp.review.direct": "z_ai-glm-coding-plan",
 }
 GLMCP_QUOTA_TELEMETRY_WRITER_REF = "scripts/hapax-quota-telemetry-writer"
+GLMCP_ADMISSION_CODING_PLAN_ENDPOINT = "https://api.z.ai/api/coding/paas/v4"
+GLMCP_ADMISSION_PAYG_ENDPOINT = "https://api.z.ai/api/paas/v4"
+GLMCP_PAYG_BUDGET_ROUTE_ID = "glmcp.review.direct"
+GLMCP_PAYG_BUDGET_PROVIDER = "z_ai"
+GLMCP_PAYG_BUDGET_PROFILE = "glmcp-review-direct"
+GLMCP_PAYG_BUDGET_TASK_CLASS = "independent-review"
+GLMCP_PAYG_BUDGET_QUALITY_FLOOR = "frontier_review_required"
+GLMCP_PAYG_ESTIMATED_COST_USD = "0.05"
+GLMCP_PAYG_PRIMARY_ERROR_CLASSES = frozenset({"daily_limit_exhausted", "quota_exhausted"})
+GLMCP_PAYG_PRIMARY_ERROR_CLASS_REF_RE = re.compile(r":primary_error_class:([^:]+)(?=:)")
+GLMCP_PAYG_QUOTA_WALL_REF_RE = re.compile(r":quota_wall_evidence_ref:([^:]+)(?=:)")
+PROVIDER_BALANCE_FIELDS = (
+    "provider_balance_usd",
+    "provider_balance_observed_at",
+    "provider_balance_covers_spend_before",
+    "provider_balance_evidence_ref",
+)
+
 GLMCP_ADMISSION_TOOL_ENDPOINTS = {
-    "hapax-glmcp-reviewer": frozenset({"https://api.z.ai/api/coding/paas/v4"}),
+    "hapax-glmcp-reviewer": frozenset({
+        GLMCP_ADMISSION_CODING_PLAN_ENDPOINT, GLMCP_ADMISSION_PAYG_ENDPOINT,
+    }),
 }
 GLMCP_ADMISSION_SUPPORTED_TOOLS = frozenset(GLMCP_ADMISSION_TOOL_ENDPOINTS)
 GLMCP_ADMISSION_ENDPOINTS = frozenset(
@@ -48,7 +68,7 @@ GLMCP_ADMISSION_ENDPOINTS = frozenset(
 )
 # Mirrors scripts/hapax-quota-telemetry-writer and the direct
 # scripts/hapax-glmcp-reviewer route metadata.
-GLMCP_ADMISSION_MODELS = frozenset({"glm-5"})
+GLMCP_ADMISSION_MODELS = frozenset({"glm-5.3", "glm-5.2"})
 GLMCP_ADMISSION_RECEIPT_LABEL_RE = re.compile(
     r"\Arelay-receipt:"
     r"(?:[a-z0-9_.+-]*glmcp-quota-admission[a-z0-9_.+-]*\.yaml|"
@@ -158,6 +178,8 @@ class SpendReconciliationState(StrEnum):
     PENDING = "pending"
     RECONCILED = "reconciled"
     FROZEN_REFUSED = "frozen_refused"
+    # Recorded balance settlement; no per-call actual is claimed.
+    SETTLED_BY_PROVIDER_BALANCE = "settled_by_provider_balance"
 
 
 class SupportArtifactAuthority(StrEnum):
@@ -260,6 +282,11 @@ class TransitionBudget(StrictModel):
     ledger_owner: str | None = None
     dashboard_visibility: Literal["required"] = "required"
     lifecycle_state: BudgetLifecycleState = BudgetLifecycleState.ACTIVE
+    # Observed balance and settlement cutoff; reading this proof never settles a receipt.
+    provider_balance_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
+    provider_balance_observed_at: datetime | None = None
+    provider_balance_covers_spend_before: datetime | None = None
+    provider_balance_evidence_ref: str | None = None
 
     @model_validator(mode="after")
     def _budget_contract(self) -> Self:
@@ -267,6 +294,22 @@ class TransitionBudget(StrictModel):
         _require_aware(self.expires_at, "expires_at")
         if self.expires_at <= self.created_at:
             raise ValueError(f"{self.budget_id} expires_at must be after created_at")
+        balance = self.provider_balance_usd
+        observed = self.provider_balance_observed_at
+        covers = self.provider_balance_covers_spend_before
+        evidence = self.provider_balance_evidence_ref
+        if any(field is not None for field in (balance, observed, covers, evidence)):
+            if (balance is None or observed is None or covers is None
+                or not (evidence or "").strip()):
+                raise ValueError(f"{self.budget_id} provider balance evidence must be complete")
+            _require_aware(observed, "provider_balance_observed_at")
+            _require_aware(covers, "provider_balance_covers_spend_before")
+            if covers > observed:
+                raise ValueError(
+                    f"{self.budget_id} a balance cannot cover spend after it was observed"
+                )
+            if self.total_cap_usd > balance:
+                raise ValueError(f"{self.budget_id} total cap exceeds the observed balance")
         if self.capacity_pool.value not in PAID_CAPACITY_POOLS:
             raise ValueError(f"{self.budget_id} must use a paid/API capacity pool")
         if self.lifecycle_state is BudgetLifecycleState.ACTIVE:
@@ -294,6 +337,18 @@ class TransitionBudget(StrictModel):
                 raise ValueError(
                     f"{self.budget_id} bootstrap budgets require replacement plan"
                 )
+        if any(
+            is_agentic_trust_supply_evidence_reference(value)
+            for value in (
+                *self.providers_allowed,
+                *self.profiles_allowed,
+                *self.task_classes_allowed,
+                *self.quality_floors_allowed,
+            )
+        ):
+            raise ValueError(
+                "agentic-trust observation evidence cannot define transition-budget eligibility"
+            )
         _reject_private_or_identity_refs(
             _refs(
                 self.budget_id,
@@ -303,10 +358,34 @@ class TransitionBudget(StrictModel):
                 *self.task_classes_allowed,
                 *self.quality_floors_allowed,
                 self.ledger_owner,
+                self.provider_balance_evidence_ref,
             ),
             "transition budget",
         )
         return self
+
+    @model_serializer(mode="wrap")
+    def _serialize_without_absent_provider_balance(self, handler: Any) -> dict[str, Any]:
+        # Preserve the pre-balance serialization when evidence is absent.
+        payload = handler(self)
+        for key in PROVIDER_BALANCE_FIELDS:
+            if payload.get(key) is None:
+                payload.pop(key, None)
+        return payload
+
+    def provider_balance_covers(self, receipt: SpendReceipt) -> bool:
+        """Whether this budget's observed provider balance already reflects ``receipt``.
+
+        Only the same provider's spend; never the budget's own spend; never spend after the
+        settlement cut-off.
+        """
+
+        return (
+            self.provider_balance_covers_spend_before is not None
+            and receipt.provider in self.providers_allowed
+            and receipt.budget_id != self.budget_id
+            and receipt.created_at < self.provider_balance_covers_spend_before
+        )
 
     def matches_request(self, request: PaidRouteRequest) -> bool:
         return (
@@ -326,6 +405,7 @@ class SpendReceipt(StrictModel):
     spend_receipt_schema: Literal[1] = 1
     spend_id: str = Field(pattern=r"^spend-\d{8}T\d{6}Z-[a-z0-9_.:-]+$")
     task_id: str = Field(min_length=1)
+    task_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     authority_case: str = Field(min_length=1)
     route_id: str = Field(min_length=1)
     capacity_pool: CapacityPool
@@ -408,10 +488,16 @@ class SpendReceipt(StrictModel):
                 raise ValueError(
                     f"{self.spend_id} frozen/refused spend requires review evidence"
                 )
+        elif self.reconciliation_state is SpendReconciliationState.SETTLED_BY_PROVIDER_BALANCE:
+            if self.actual_cost_usd is not None:
+                raise ValueError(f"{self.spend_id} balance-settled spend cannot claim actual cost")
+            if self.reconciled_at is None or not self.reconciliation_reason:
+                raise ValueError(f"{self.spend_id} balance-settled spend requires its evidence")
         _reject_private_or_identity_refs(
             _refs(
                 self.spend_id,
                 self.task_id,
+                self.task_hash,
                 self.authority_case,
                 self.route_id,
                 self.budget_id,
@@ -429,8 +515,19 @@ class SpendReceipt(StrictModel):
         )
         return self
 
+    @model_serializer(mode="wrap")
+    def _serialize_without_empty_task_hash(self, handler: Any) -> dict[str, Any]:
+        payload = handler(self)
+        if payload.get("task_hash") is None:
+            payload.pop("task_hash", None)
+        return payload
+
     def cost_against_cap(self) -> Decimal:
-        return self.actual_cost_usd or self.estimated_cost_usd or Decimal("0")
+        if self.actual_cost_usd is not None:
+            return self.actual_cost_usd
+        if self.estimated_cost_usd is not None:
+            return self.estimated_cost_usd
+        return Decimal("0")
 
     def is_unreconciled_overdue(self, now: datetime) -> bool:
         return (
@@ -1077,6 +1174,13 @@ def evaluate_paid_route_eligibility(
             blocking_reasons=tuple(blocking),
         )
 
+    unexpired = tuple(
+        budget
+        for budget in matching
+        if budget.lifecycle_state is BudgetLifecycleState.ACTIVE
+        and budget.is_unexpired_at(when)
+    )
+    # All matching unresolved receipts block; resolution must be recorded before this read.
     overdue = tuple(
         budget
         for budget in matching
@@ -1096,12 +1200,6 @@ def evaluate_paid_route_eligibility(
             + ", ".join(b.budget_id for b in frozen)
         )
 
-    unexpired = tuple(
-        budget
-        for budget in matching
-        if budget.lifecycle_state is BudgetLifecycleState.ACTIVE
-        and budget.is_unexpired_at(when)
-    )
     if not unexpired:
         blocking.append("matching TransitionBudget expired or inactive")
         return PaidRouteEligibility(
@@ -1117,13 +1215,18 @@ def evaluate_paid_route_eligibility(
         daily_remaining = budget.daily_cap_usd - ledger._budget_spent_today_usd(
             budget, when
         )
-        if request.estimated_cost_usd > budget.per_task_cap_usd:
+        task_remaining = budget.per_task_cap_usd - ledger._budget_spent_for_task_usd(
+            budget,
+            request.task_id,
+        )
+        limiting_remaining = min(remaining, daily_remaining, task_remaining)
+        if request.estimated_cost_usd > task_remaining:
             continue
         if request.estimated_cost_usd > remaining:
             continue
         if request.estimated_cost_usd > daily_remaining:
             continue
-        cap_eligible.append((budget, remaining - request.estimated_cost_usd))
+        cap_eligible.append((budget, limiting_remaining - request.estimated_cost_usd))
 
     if not cap_eligible:
         blocking.append("matching TransitionBudget cap exhausted")
@@ -1488,11 +1591,44 @@ def _effective_subscription_quota_state(
 ) -> SubscriptionQuotaState:
     if _subscription_quota_missing_required_admission_evidence(ledger, snapshot):
         return SubscriptionQuotaState.UNKNOWN
+    if _subscription_quota_missing_required_payg_spend_gate(ledger, snapshot, now=now):
+        return SubscriptionQuotaState.UNKNOWN
     if _subscription_quota_missing_required_fresh_until(snapshot):
         return SubscriptionQuotaState.UNKNOWN
     if _subscription_quota_fresh_until_expired(snapshot, now=now):
         return SubscriptionQuotaState.STALE
     return snapshot.subscription_quota_state
+
+
+def _subscription_quota_missing_required_payg_spend_gate(
+    ledger: QuotaSpendLedger,
+    snapshot: QuotaSnapshot,
+    *,
+    now: datetime,
+) -> bool:
+    if snapshot.subscription_quota_state is not SubscriptionQuotaState.FRESH:
+        return False
+    if _normalize_route_id(snapshot.route_id) != GLMCP_PAYG_BUDGET_ROUTE_ID:
+        return False
+    if not any(_is_glmcp_payg_admission_evidence_ref(ref) for ref in snapshot.evidence_refs):
+        return False
+    for receipt in _matching_glmcp_payg_spend_receipts(ledger, snapshot):
+        decision = evaluate_paid_route_eligibility(
+            ledger,
+            _glmcp_payg_budget_request(receipt.task_id),
+            now=now,
+        )
+        required_refs = {
+            f"spend-gate:{GLMCP_PAYG_BUDGET_ROUTE_ID}:eligible_active_budget",
+            f"spend-gate-budget:{decision.budget_id}",
+        }
+        if (
+            decision.eligible
+            and decision.budget_id == receipt.budget_id
+            and required_refs.issubset(set(snapshot.evidence_refs))
+        ):
+            return False
+    return True
 
 
 def _subscription_quota_missing_required_fresh_until(snapshot: QuotaSnapshot) -> bool:
@@ -1528,6 +1664,7 @@ def _is_glmcp_admission_evidence_ref(ref: str) -> bool:
         GLMCP_ADMISSION_RECEIPT_LABEL_RE.match(ref) is not None
         and _has_safe_glmcp_admission_witness(ref)
         and _has_glmcp_admission_tool_endpoint_pair(ref)
+        and _has_glmcp_payg_witness_fields_for_endpoint(ref)
         and any(f":model:{model}:" in ref for model in GLMCP_ADMISSION_MODELS)
         and ":observed_at:" in ref
         and ":fresh_until:" in ref
@@ -1689,6 +1826,84 @@ _PYDANTIC_DYNAMIC_ENTRYPOINTS = (
     SpendGateDecisionRecord._decision_contract,
     QuotaSpendLedger._ledger_contract,
 )
+
+
+def _is_glmcp_payg_admission_evidence_ref(ref: str) -> bool:
+    return (
+        _is_glmcp_admission_evidence_ref(ref)
+        and f":endpoint:{GLMCP_ADMISSION_PAYG_ENDPOINT}:" in ref
+    )
+
+
+def _glmcp_payg_spend_receipt_witness_refs(receipt: SpendReceipt) -> set[str]:
+    if (
+        _normalize_route_id(receipt.route_id) != GLMCP_PAYG_BUDGET_ROUTE_ID
+        or receipt.capacity_pool is not CapacityPool.API_PAID_SPEND
+        or receipt.provider != GLMCP_PAYG_BUDGET_PROVIDER
+        or receipt.spend_reason is not SpendReason.QUOTA_EXHAUSTION
+    ):
+        return set()
+    refs = {receipt.spend_id}
+    match = re.fullmatch(r"spend-([0-9]{8}T[0-9]{6}Z)-glmcp-payg-review-(.+)", receipt.spend_id)
+    if match is not None:
+        stamp, suffix = match.groups()
+        refs.add(f"glmcp-payg-spend-{stamp.lower()}-{suffix}.yaml")
+    return refs
+
+
+def _matching_glmcp_payg_spend_receipts(
+    ledger: QuotaSpendLedger,
+    snapshot: QuotaSnapshot,
+) -> tuple[SpendReceipt, ...]:
+    witnesses = {
+        match.group(1)
+        for ref in snapshot.evidence_refs
+        if _is_glmcp_payg_admission_evidence_ref(ref)
+        for match in [GLMCP_ADMISSION_WITNESS_REF_RE.search(ref)]
+        if match is not None
+    }
+    if not witnesses:
+        return ()
+    return tuple(
+        receipt
+        for receipt in ledger.spend_receipts
+        if witnesses & _glmcp_payg_spend_receipt_witness_refs(receipt)
+    )
+
+
+def _glmcp_payg_budget_request(task_id: str) -> PaidRouteRequest:
+    return PaidRouteRequest.model_validate(
+        {
+            "route_id": GLMCP_PAYG_BUDGET_ROUTE_ID,
+            "task_id": task_id,
+            "provider": GLMCP_PAYG_BUDGET_PROVIDER,
+            "profile": GLMCP_PAYG_BUDGET_PROFILE,
+            "task_class": GLMCP_PAYG_BUDGET_TASK_CLASS,
+            "quality_floor": GLMCP_PAYG_BUDGET_QUALITY_FLOOR,
+            "estimated_cost_usd": GLMCP_PAYG_ESTIMATED_COST_USD,
+            "capacity_pool": CapacityPool.API_PAID_SPEND,
+        }
+    )
+
+
+def _has_glmcp_payg_witness_fields_for_endpoint(ref: str) -> bool:
+    endpoint_matches = [
+        endpoint for endpoint in GLMCP_ADMISSION_ENDPOINTS if f":endpoint:{endpoint}:" in ref
+    ]
+    primary_error_matches = GLMCP_PAYG_PRIMARY_ERROR_CLASS_REF_RE.findall(ref)
+    wall_ref_matches = GLMCP_PAYG_QUOTA_WALL_REF_RE.findall(ref)
+    if len(endpoint_matches) != 1:
+        return False
+    if endpoint_matches[0] != GLMCP_ADMISSION_PAYG_ENDPOINT:
+        return not primary_error_matches and not wall_ref_matches
+    if len(primary_error_matches) != 1 or len(wall_ref_matches) != 1:
+        return False
+    wall_ref = wall_ref_matches[0]
+    return (
+        primary_error_matches[0] in GLMCP_PAYG_PRIMARY_ERROR_CLASSES
+        and GLMCP_ADMISSION_EVIDENCE_REF_RE.fullmatch(wall_ref) is not None
+        and GLMCP_ADMISSION_SECRETISH_RE.search(wall_ref) is None
+    )
 
 
 __all__ = [
