@@ -2067,6 +2067,8 @@ def _is_safe_claude_ignored_evidence_ref(ref: str) -> bool:
     if label is None:
         return False
     ignored_reason = ref.split(":ignored:", maxsplit=1)[1]
+    if ref != f"relay-receipt:{label}:ignored:{ignored_reason}":
+        return False
     if not _is_safe_claude_ignored_reason(ignored_reason):
         return False
     if re.fullmatch(r"unsafe-receipt-name-sha256:[0-9a-f]{16}", label) is not None:

@@ -203,6 +203,22 @@ def test_sanitized_ignored_evidence_is_not_admission(label, reason):
     assert q._subscription_quota_missing_current_claude_receipt(quota([ref]), now=NOW)
 
 
+@pytest.mark.parametrize("label", [LABEL, HASH_LABEL])
+@pytest.mark.parametrize("middle", [
+    "witness:" + WITNESS,
+    "witness:sk-fixture", "witness:customer-cus_123", "witness:hapax-claude-eta-present",
+    "witness:fixture:secret:sk-fixture", "witness:fixture:billing:cus_123",
+    "witness:fixture:lane:cx-teal",
+    "secret:sk-fixture", "billing:cus_123", "lane:cx-teal",
+])
+def test_ignored_marker_must_directly_follow_label(label, middle):
+    ref = f"relay-receipt:{label}:{middle}:ignored:expired"
+    assert not q._is_safe_claude_ignored_evidence_ref(ref)
+    assert q._is_untrusted_claude_admission_ref_for_evidence(ref)
+    assert not q._is_claude_admission_evidence_ref(ref)
+    assert q._subscription_quota_missing_current_claude_receipt(quota([ref]), now=NOW)
+
+
 @pytest.mark.parametrize("reason", [
     "", "X", "unsafe:detail", "a" * 121, "reason_with_underscore", "expired\n",
     "secret", "api-key", "customer-cus-123", "billingcus123", "subscriptionid123",
@@ -338,6 +354,8 @@ def _mutations():
         ('if ":ignored:" not in ref:\n        return False',
          'if ":ignored:" not in ref:\n        return True', "ignored-marker"),
         ("if label is None:\n        return False", "if label is None:\n        return True", "ignored-label-present"),
+        ('if ref != f"relay-receipt:{label}:ignored:{ignored_reason}":',
+         "if False:", "complete-ignored-locator"),
         ("if not _is_safe_claude_ignored_reason(ignored_reason):", "if False:", "ignored-reason-required"),
         ('re.fullmatch(r"unsafe-receipt-name-sha256:[0-9a-f]{16}", label) is not None',
          "True", "sanitized-hash-shape"),
