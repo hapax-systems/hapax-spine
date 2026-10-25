@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -36,6 +36,11 @@ from hapax.spine.platform_capability_receipts import (
     receipt_reference,
 )
 from hapax.spine.quota_spend_ledger import (
+    CLAUDE_ADMISSION_ACCOUNT_LIVE_QUOTA_SUFFIX,
+    QuotaSpendLedgerError,
+    SubscriptionQuotaState,
+    load_quota_spend_ledger_resolved,
+    subscription_quota_state_for_route,
     CLAUDE_ADMISSION_COMPOSITE_REF_RE,
     QUOTA_SPEND_LEDGER_LIVE_ENV,
 )
@@ -2100,6 +2105,138 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+def resolve_subscription_pool_bindings(
+    path: Path | None = None,
+    *,
+    home: Path | None = None,
+) -> dict[str, ResolvedSubscriptionPool]:
+    """Every route's declared subscription pool, with its paths under ``home``.
+
+    Reads the static declaration only; receipts never change which pool a route bills. A route
+    missing from the result is unbound and runs on the CLI default config dir. Raises
+    ``PlatformCapabilityRegistryError`` when the registry cannot be read: a caller that cannot
+    tell whether a route is bound must refuse rather than assume it is not.
+
+    The default path is the one ``shared/capability_execution.py`` resolves the execution
+    descriptor from (``HAPAX_PLATFORM_CAPABILITY_REGISTRY``, else the checked-in registry), so
+    a process takes its model and its billed pool from one declaration.
+    """
+
+    if path is None:
+        configured = os.environ.get("HAPAX_PLATFORM_CAPABILITY_REGISTRY")
+        path = resolve_config_path(
+            Path(configured) if configured else None, "platform-capability-registry.json"
+        )
+    try:
+        registry = PlatformCapabilityRegistry.model_validate(_load_json_object(path))
+    except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+        raise PlatformCapabilityRegistryError(
+            f"invalid platform capability registry at {path}: {exc}; next action: repair that "
+            "file (or HAPAX_PLATFORM_CAPABILITY_REGISTRY) and retry"
+        ) from exc
+    root = Path.home() if home is None else home
+    return {
+        route.route_id: ResolvedSubscriptionPool(
+            route_id=route.route_id,
+            pool=binding.pool,
+            config_dir=root / binding.config_home,
+            receipt_dir=root / binding.receipt_dir,
+            headless_dir=root / binding.headless_dir,
+            pace_activation=root / binding.pace_activation,
+            durable_sink_root=root / binding.durable_sink_root,
+        )
+        for route in registry.routes
+        if (binding := route.subscription_pool_binding) is not None
+    }
+
+def resolve_subscription_pool_binding(
+    route_id: str,
+    path: Path | None = None,
+    *,
+    home: Path | None = None,
+) -> ResolvedSubscriptionPool | None:
+    """One route's declared pool, or None when the route is unbound (see the plural form)."""
+
+    return resolve_subscription_pool_bindings(path, home=home).get(normalize_route_id(route_id))
+
+def claude_config_dir_for_env(env: Mapping[str, str], *, home: Path | None = None) -> Path:
+    """The config dir, and so the subscription pool, a Claude CLI child of ``env`` runs on."""
+
+    configured = (env.get("CLAUDE_CONFIG_DIR") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return (Path.home() if home is None else home) / CLAUDE_DEFAULT_CONFIG_HOME
+
+def _apply_route_authority_receipts_from_dir(
+    registry: PlatformCapabilityRegistry,
+    *,
+    receipt_dir: Path,
+    now: datetime | None = None,
+) -> PlatformCapabilityRegistry:
+    """Overlay signed route-authority receipts in capability projections.
+
+    The dispatcher policy owns route-authority receipt validation and mutation of
+    registry payloads. Keep the import local to avoid making the inert registry
+    module import the full dispatch policy during model definition.
+    """
+
+    from hapax.spine.dispatcher_policy import apply_route_authority_receipts
+
+    return apply_route_authority_receipts(
+        registry,
+        receipt_dir=receipt_dir,
+        now=now,
+    )
+
+def _route_specific_quota_admission_fresh(
+    route_payload: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, tuple[str, ...]]:
+    route_id = route_payload.get("route_id")
+    if route_id not in ROUTE_SPECIFIC_QUOTA_ADMISSION_BLOCKERS:
+        return False, ()
+    try:
+        resolved = load_quota_spend_ledger_resolved(live_path=_quota_spend_live_path_from_env())
+    except (OSError, QuotaSpendLedgerError, ValueError) as exc:
+        return False, (f"quota-spend-ledger:{route_id}:read-error:{type(exc).__name__}",)
+    if resolved.source != "live":
+        if resolved.live_error:
+            return False, (f"quota-spend-ledger:{route_id}:live-ledger-invalid",)
+        return False, ()
+    state, evidence_refs = subscription_quota_state_for_route(
+        resolved.ledger,
+        route_id,
+        now=now,
+    )
+    fresh = state is SubscriptionQuotaState.FRESH
+    pool = (route_payload.get("subscription_pool_binding") or {}).get("pool")
+    if fresh and pool and not _admission_refs_name_pool(evidence_refs, str(pool)):
+        # A route bound to a pool is admitted only by that pool's own admission receipts: default-
+        # or other-pool evidence for it would bill one pool on another's measurement.
+        return False, (
+            *evidence_refs,
+            f"quota-spend-ledger:{route_id}:admission-not-from-declared-pool:{pool}",
+        )
+    return fresh, evidence_refs
+
+def _receipt_quota_names_route(
+    receipt: PlatformCapabilityReceipt, route_payload: dict[str, Any]
+) -> bool:
+    """True when the receipt's quota surface is OBSERVED and its evidence names this route.
+
+    The receipts producer writes one ``platform-capability-registry:<route_id>:quota:observed``
+    reference per route it actually saw a fresh receipt AND a fresh ledger snapshot for. A receipt
+    that is OBSERVED for a sibling route is not an observation of this one.
+    """
+    if receipt.quota.status is not EvidenceStatus.OBSERVED:
+        return False
+    route_id = str(route_payload.get("route_id") or "")
+    if not route_id:
+        return False
+    return f"platform-capability-registry:{route_id}:quota:observed" in receipt.quota.evidence_refs
+
+
 def load_platform_capability_registry(
     path: Path | None = None,
     *,
@@ -2107,13 +2244,19 @@ def load_platform_capability_registry(
     now: datetime | None = None,
 ) -> PlatformCapabilityRegistry:
     """Load the platform capability registry, failing closed on malformed data."""
+
     path = resolve_config_path(path, "platform-capability-registry.json")
     try:
         registry = PlatformCapabilityRegistry.model_validate(_load_json_object(path))
         effective_receipt_dir = receipt_dir or _receipt_dir_from_env()
         if effective_receipt_dir is None:
             return registry
-        return apply_platform_capability_receipts(
+        registry = apply_platform_capability_receipts(
+            registry,
+            receipt_dir=effective_receipt_dir,
+            now=now,
+        )
+        return _apply_route_authority_receipts_from_dir(
             registry,
             receipt_dir=effective_receipt_dir,
             now=now,
@@ -2164,64 +2307,99 @@ def apply_platform_capability_receipts(
             continue
         if route_payload["route_id"] not in receipt.routes:
             continue
-        _apply_receipt_to_route_payload(route_payload, receipt)
+        _apply_receipt_to_route_payload(route_payload, receipt, now=now)
     return PlatformCapabilityRegistry.model_validate(payload)
 
 
 def _apply_receipt_to_route_payload(
     route_payload: dict[str, Any],
     receipt: PlatformCapabilityReceipt,
+    *,
+    now: datetime | None = None,
 ) -> None:
     receipt_ref = receipt_reference(receipt)
     freshness = route_payload["freshness"]
     observed_at = receipt.observed_at.isoformat().replace("+00:00", "Z")
-    provider_docs_at = receipt.provider_docs.fetched_at.isoformat().replace(
-        "+00:00", "Z"
-    )
+    provider_docs_at = receipt.provider_docs.fetched_at.isoformat().replace("+00:00", "Z")
     top_blockers = list(route_payload.get("blocked_reasons") or [])
+    route_wrapper = _route_wrapper_for_receipt(route_payload, receipt)
+    capability_reason_codes = _route_receipt_capability_reason_codes(receipt, route_wrapper)
+    resource_reason_codes = _route_receipt_resource_reason_codes(receipt, route_wrapper)
+    capability_status = _surface_status_from_reasons(
+        receipt.capability.status,
+        capability_reason_codes,
+    )
+    resource_status = _surface_status_from_reasons(receipt.resource.status, resource_reason_codes)
+    capability_refs = list(
+        dict.fromkeys(
+            [
+                *receipt.capability.evidence_refs,
+                *_wrapper_capability_refs(route_wrapper),
+                receipt_ref,
+            ]
+        )
+    )
+    resource_refs = list(
+        dict.fromkeys(
+            [*receipt.resource.evidence_refs, *_wrapper_resource_refs(route_wrapper), receipt_ref]
+        )
+    )
     quota_unobservable_nonblocking = _quota_unobservable_nonblocking(
         route_payload,
         receipt,
+        capability_status=capability_status,
+        resource_status=resource_status,
     )
-    quota_reason_codes = (
-        [] if quota_unobservable_nonblocking else receipt.quota.reason_codes
-    )
+    quota_reason_codes = [] if quota_unobservable_nonblocking else receipt.quota.reason_codes
 
     _apply_surface(
         freshness,
         "capability",
         checked_at=observed_at,
         stale_after=receipt.capability.stale_after,
-        evidence_refs=[*receipt.capability.evidence_refs, receipt_ref],
-        reason_codes=receipt.capability.reason_codes,
-        removable_reasons=_capability_receipt_removable_reasons(route_payload),
+        evidence_refs=capability_refs,
+        reason_codes=capability_reason_codes,
+        removable_reasons=_capability_receipt_removable_reasons(route_payload)
+        if capability_status is EvidenceStatus.OBSERVED
+        else set(),
     )
     _apply_surface(
         freshness,
         "resource",
         checked_at=observed_at,
         stale_after=receipt.resource.stale_after,
-        evidence_refs=[*receipt.resource.evidence_refs, receipt_ref],
-        reason_codes=receipt.resource.reason_codes,
-        removable_reasons=_resource_receipt_removable_reasons(route_payload),
+        evidence_refs=resource_refs,
+        reason_codes=resource_reason_codes,
+        removable_reasons=_resource_receipt_removable_reasons(route_payload)
+        if resource_status is EvidenceStatus.OBSERVED
+        else set(),
     )
     quota_stale_after = (
-        receipt.stale_after
-        if quota_unobservable_nonblocking
-        else receipt.quota.stale_after
+        receipt.stale_after if quota_unobservable_nonblocking else receipt.quota.stale_after
     )
+    # A platform receipt's quota evidence names the routes it actually observed
+    # (`platform-capability-registry:<route_id>:quota:observed`). An OBSERVED receipt that does not
+    # name THIS route is, for this route, an absent observation — one route's fresh receipt must
+    # not clear the quota blockers of its siblings (review finding on #4616).
+    quota_observed_for_route = _receipt_quota_names_route(receipt, route_payload)
+    if receipt.quota.status is EvidenceStatus.OBSERVED and not quota_observed_for_route:
+        quota_reason_codes = list(
+            dict.fromkeys([*quota_reason_codes, "account_live_quota_receipt_absent"])
+        )
     _apply_surface(
         freshness,
         "quota",
         checked_at=observed_at,
         stale_after=quota_stale_after,
         evidence_refs=[*receipt.quota.evidence_refs, receipt_ref],
-        reason_codes=quota_reason_codes
-        if receipt.quota.status is not EvidenceStatus.OBSERVED
-        else [],
+        # Observing quota (including exhausted quota) is not an availability
+        # verdict. Route correlation cannot discard reported blockers.
+        reason_codes=quota_reason_codes,
         removable_reasons=_quota_unobservable_removable_reasons(route_payload)
         if quota_unobservable_nonblocking
-        else {"account_live_quota_receipt_absent", "quota_telemetry_unknown"},
+        else (
+            _quota_receipt_removable_reasons(route_payload) if quota_observed_for_route else set()
+        ),
     )
     _apply_surface(
         freshness,
@@ -2236,44 +2414,94 @@ def _apply_receipt_to_route_payload(
     for tool in route_payload.get("tool_state", []):
         tool["observed_at"] = observed_at
         tool["evidence_ref"] = receipt_ref
-    if receipt.capability.status is EvidenceStatus.OBSERVED:
+    if _receipt_measures_capability_scores(
+        route_payload,
+        receipt,
+        capability_status=capability_status,
+    ):
         for score in route_payload.get("capability_scores", {}).values():
             score["observed_at"] = observed_at
             score["evidence_refs"] = list(
                 dict.fromkeys([*score.get("evidence_refs", []), receipt_ref])
             )
+    if quota_observed_for_route:
+        route_payload.setdefault("telemetry", {})["quota_source"] = QuotaSource.MANUAL.value
 
-    if receipt.capability.status is not EvidenceStatus.OBSERVED:
-        top_blockers.extend(receipt.capability.reason_codes)
-    if receipt.resource.status is not EvidenceStatus.OBSERVED:
-        top_blockers.extend(receipt.resource.reason_codes)
-    if (
-        receipt.quota.status is not EvidenceStatus.OBSERVED
-        and not quota_unobservable_nonblocking
-    ):
-        top_blockers.extend(receipt.quota.reason_codes)
+    if capability_status is not EvidenceStatus.OBSERVED:
+        top_blockers.extend(capability_reason_codes)
+    if resource_status is not EvidenceStatus.OBSERVED:
+        top_blockers.extend(resource_reason_codes)
 
-    removable_top_blockers = {
-        *_capability_receipt_removable_reasons(route_payload),
-        *_resource_receipt_removable_reasons(route_payload),
-        "provider_docs_evidence_absent",
-    }
+    removable_top_blockers = {"provider_docs_evidence_absent"}
+    if capability_status is EvidenceStatus.OBSERVED:
+        removable_top_blockers.update(_capability_receipt_removable_reasons(route_payload))
+    if resource_status is EvidenceStatus.OBSERVED:
+        removable_top_blockers.update(_resource_receipt_removable_reasons(route_payload))
     if quota_unobservable_nonblocking:
-        removable_top_blockers.update(
-            _quota_unobservable_removable_reasons(route_payload)
-        )
-    top_blockers = [
-        reason for reason in top_blockers if reason not in removable_top_blockers
-    ]
-    route_payload["blocked_reasons"] = list(dict.fromkeys(top_blockers))
-    route_payload["route_state"] = (
-        "blocked" if route_payload["blocked_reasons"] else "active"
+        removable_top_blockers.update(_quota_unobservable_removable_reasons(route_payload))
+    elif quota_observed_for_route:
+        removable_top_blockers.update(_observed_quota_receipt_removable_reasons(route_payload))
+    quota_admission_fresh, quota_admission_refs = _route_specific_quota_admission_fresh(
+        route_payload,
+        now=now,
     )
+    route_specific_blocker = ROUTE_SPECIFIC_QUOTA_ADMISSION_BLOCKERS.get(
+        route_payload.get("route_id")
+    )
+    quota_admission_refs_to_inject = quota_admission_refs
+    if not quota_admission_fresh and route_payload.get("route_id") in {
+        CLAUDE_HEADLESS_ROUTE_ID,
+        CLAUDE_INTERACTIVE_ROUTE_ID,
+    }:
+        quota_admission_refs_to_inject = tuple(
+            ref
+            for ref in quota_admission_refs
+            if not _ref_has_token_suffix(ref, CLAUDE_ADMISSION_ACCOUNT_LIVE_QUOTA_SUFFIX)
+        )
+    if quota_admission_refs_to_inject:
+        freshness["evidence"]["quota"]["evidence_refs"] = list(
+            dict.fromkeys(
+                [
+                    *freshness["evidence"]["quota"].get("evidence_refs", []),
+                    *quota_admission_refs_to_inject,
+                ]
+            )
+        )
+    if route_specific_blocker and not quota_admission_fresh:
+        top_blockers.append(route_specific_blocker)
+        quota_evidence = freshness["evidence"]["quota"]
+        quota_evidence["blocked_reasons"] = list(
+            dict.fromkeys(
+                [
+                    *quota_evidence.get("blocked_reasons", []),
+                    route_specific_blocker,
+                ]
+            )
+        )
+    if quota_admission_fresh:
+        blocker = route_specific_blocker
+        if blocker:
+            route_payload.setdefault("telemetry", {})["quota_source"] = QuotaSource.LEDGER.value
+            removable_top_blockers.add(blocker)
+            quota_evidence = freshness["evidence"]["quota"]
+            quota_evidence["blocked_reasons"] = [
+                reason for reason in quota_evidence.get("blocked_reasons", []) if reason != blocker
+            ]
+    top_blockers = [reason for reason in top_blockers if reason not in removable_top_blockers]
+    # Project the final quota surface after clearing historical top-level
+    # blockers. A current reason must survive even if an older instance of
+    # that reason was eligible for removal.
+    top_blockers.extend(freshness["evidence"]["quota"]["blocked_reasons"])
+    route_payload["blocked_reasons"] = list(dict.fromkeys(top_blockers))
+    route_payload["route_state"] = "blocked" if route_payload["blocked_reasons"] else "active"
 
 
 def _quota_unobservable_nonblocking(
     route_payload: dict[str, Any],
     receipt: PlatformCapabilityReceipt,
+    *,
+    capability_status: EvidenceStatus | None = None,
+    resource_status: EvidenceStatus | None = None,
 ) -> bool:
     """Treat expected local quota unobservability as evidence, not a hold.
 
@@ -2291,9 +2519,11 @@ def _quota_unobservable_nonblocking(
         "quota_telemetry_unknown",
     }:
         return False
+    effective_capability_status = capability_status or receipt.capability.status
+    effective_resource_status = resource_status or receipt.resource.status
     if (
-        receipt.capability.status is not EvidenceStatus.OBSERVED
-        or receipt.resource.status is not EvidenceStatus.OBSERVED
+        effective_capability_status is not EvidenceStatus.OBSERVED
+        or effective_resource_status is not EvidenceStatus.OBSERVED
     ):
         return False
     capacity_pool = route_payload.get("capacity_pool")
@@ -2305,8 +2535,7 @@ def _quota_unobservable_nonblocking(
             CapacityPool.API_PAID_SPEND.value,
             CapacityPool.BOOTSTRAP_BUDGET.value,
         }
-        and route_payload.get("telemetry", {}).get("quota_source")
-        == QuotaSource.LEDGER.value
+        and route_payload.get("telemetry", {}).get("quota_source") == QuotaSource.LEDGER.value
     )
 
 
