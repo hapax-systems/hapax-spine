@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -23,8 +24,12 @@ from hapax.spine.agentic_trust_boundary import (
     AGENTIC_TRUST_EVIDENCE_RECEIPT_CLASS,
     AGENTIC_TRUST_EVIDENCE_SURFACE_ID,
     agentic_trust_supply_evidence_paths,
+    is_agentic_trust_evidence_surface_identity,
     is_agentic_trust_supply_evidence_reference,
     normalize_supply_admission_identity,
+)
+from hapax.spine.capability_surface_delta import (
+    CapabilitySurfaceDelta as CapabilitySurfaceDeltaSignal,
 )
 from hapax.spine.platform_capability_receipts import (
     DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR,
@@ -2689,6 +2694,364 @@ def materialize_descriptor_leaves(
     return leaves
 
 
+def check_primary_source_candidate_request(
+    binding: dict[str, Any], facts: dict[str, Any]
+) -> PrimarySourceCandidateCheck:
+    """Validate candidate request data, without fetching, observing or granting authority.
+
+    A passing result is not executable admission. The separate enforcing-tool row
+    must bind actual task authority/receipts, quota, DNS, every redirect, authentication,
+    billing and streamed byte counts at use; registry declarations cannot enforce HTTP.
+    """
+
+    candidate = PrimarySourceCandidateBinding.model_validate(binding)
+    request = PrimarySourceRequestFacts.model_validate(facts)
+    stops: list[str] = []
+    if (
+        request.documents_used >= candidate.max_documents
+        or request.gets_used >= candidate.max_gets
+        or request.downloaded_bytes + request.request_byte_limit > candidate.max_download_bytes
+    ):
+        stops.append("bound_exhausted")
+    if request.authentication != "none":
+        stops.append("unexpected_authentication")
+    if request.billing != "declared_zero_incremental":
+        stops.append("unknown_billing")
+    try:
+        target = urlsplit(request.url)
+        public_target = (
+            target.scheme == "https"
+            and target.hostname in candidate.allowed_domains
+            and target.username is None
+            and target.password is None
+            and target.port in (None, 443)
+            and not target.query
+            and not target.fragment
+            and not any(char.isspace() or ord(char) < 32 for char in request.url)
+        )
+    except ValueError:
+        public_target = False
+    if not public_target or request.endpoint_public is not True:
+        stops.append("unsafe_endpoint")
+    if not request.admission_passed or not request.quota_fresh:
+        stops.append("failed_admission")
+    return PrimarySourceCandidateCheck(tuple(stops))
+
+def is_registered_evidence_only_surface(
+    registry: PlatformCapabilityRegistry,
+    surface_id: str,
+) -> bool:
+    """Return whether an exact normalized surface identity is permanent non-supply."""
+
+    normalized = normalize_capability_surface_identity(surface_id)
+    return any(
+        shape.shape_state is CapabilityShapeState.EVIDENCE_ONLY
+        and normalize_capability_surface_identity(shape.shape_id) == normalized
+        for shape in registry.omitted_capability_shapes
+    )
+
+def _surface_matches_shape(
+    delta: CapabilitySurfaceDeltaSignal,
+    shape: CapabilityShapeDescriptor,
+) -> bool:
+    surface = _normalize_surface_token(delta.surface_id)
+    shape_id = _normalize_surface_token(shape.shape_id)
+    if shape.shape_state is CapabilityShapeState.EVIDENCE_ONLY:
+        # A permanent evidence surface owns one exact observation identity, not
+        # a namespace. Prefix matching here would silently swallow a genuinely
+        # new executable/measurement child instead of sending it through intake.
+        return normalize_capability_surface_identity(
+            delta.surface_id
+        ) == normalize_capability_surface_identity(shape.shape_id)
+    if surface == shape_id or surface.startswith(f"{shape_id}."):
+        return True
+    signal_token = _shape_signal_token(shape)
+    if signal_token is None or shape.shape_state is CapabilityShapeState.DEPRECATED:
+        return False
+    signal_surface = f"surface.{signal_token}"
+    return surface == signal_surface or surface.startswith(f"{signal_surface}.")
+
+def disposition_for_capability_surface_delta(
+    registry: PlatformCapabilityRegistry,
+    delta: CapabilitySurfaceDeltaSignal,
+) -> CapabilitySurfaceDisposition:
+    """Classify a canonical SDLC capability-surface delta without admitting supply.
+
+    A known measurement/intake shape holds pending measurement. A permanent evidence-only
+    shape remains observable without entering the dispatch-hold channel. An unknown surface
+    mints intake. Deprecated shapes refuse as live supply while preserving provenance and
+    remediation refs for Reins and operators.
+    """
+
+    matches = [
+        shape
+        for shape in registry.omitted_capability_shapes
+        if _surface_matches_shape(delta, shape)
+    ]
+    exact_evidence_matches = [
+        shape
+        for shape in matches
+        if shape.shape_state is CapabilityShapeState.EVIDENCE_ONLY
+        and normalize_capability_surface_identity(delta.surface_id)
+        == normalize_capability_surface_identity(shape.shape_id)
+    ]
+    if exact_evidence_matches:
+        # Exact permanent non-supply identity dominates broad carrier-family
+        # signals.  A generic measurement descriptor cannot claim or block it.
+        matches = exact_evidence_matches
+    if not matches:
+        return CapabilitySurfaceDisposition(
+            surface_id=delta.surface_id,
+            action=CapabilitySurfaceDeltaAction.MINT_INTAKE,
+            descriptor_id=None,
+            reason_codes=(
+                "capability_surface_delta_unknown_shape",
+                "measured_supply_leaf_absent",
+                "route_resource_governance_receipts_absent",
+            ),
+            remediation_refs=(
+                "mint:cc-task:capability-surface-intake",
+                "require:descriptor",
+                "require:measurement_plan",
+                "require:route_resource_governance_receipts",
+            ),
+        )
+
+    shape = sorted(matches, key=lambda item: item.shape_id)[0]
+    if shape.shape_state is CapabilityShapeState.DEPRECATED:
+        return CapabilitySurfaceDisposition(
+            surface_id=delta.surface_id,
+            action=CapabilitySurfaceDeltaAction.DEPRECATED_REFUSE,
+            descriptor_id=shape.shape_id,
+            reason_codes=(
+                "capability_shape_deprecated",
+                "live_route_identity_refused",
+                "measured_supply_leaf_absent",
+            ),
+            remediation_refs=tuple(shape.remediation_refs),
+        )
+
+    if shape.shape_state is CapabilityShapeState.EVIDENCE_ONLY:
+        return CapabilitySurfaceDisposition(
+            surface_id=delta.surface_id,
+            action=CapabilitySurfaceDeltaAction.KNOWN_EVIDENCE_ONLY_OBSERVE,
+            descriptor_id=shape.shape_id,
+            reason_codes=(
+                "known_omitted_capability_shape",
+                "evidence_only_observation_not_dispatch_supply",
+                "measured_supply_leaf_absent",
+            ),
+            remediation_refs=tuple(shape.remediation_refs),
+        )
+
+    return CapabilitySurfaceDisposition(
+        surface_id=delta.surface_id,
+        action=CapabilitySurfaceDeltaAction.KNOWN_HOLD_FOR_MEASUREMENT,
+        descriptor_id=shape.shape_id,
+        reason_codes=(
+            "known_omitted_capability_shape",
+            "evidence_only_not_dispatch_supply",
+            "measured_supply_leaf_absent",
+        ),
+        remediation_refs=tuple(shape.remediation_refs),
+    )
+
+def check_omitted_shape_freshness(
+    registry: PlatformCapabilityRegistry,
+    *,
+    now: datetime | None = None,
+) -> OmittedShapeFreshnessReport:
+    """Report non-supply observation freshness without touching route freshness.
+
+    This report is intentionally not consumed by dispatch or availability policy.
+    Missing/stale evidence-only observations remain visible here but cannot hold,
+    admit, or otherwise modify route supply.
+    """
+
+    checked_now = ensure_utc(now or datetime.now(UTC))
+    checks: list[OmittedShapeFreshnessCheck] = []
+    for shape in sorted(registry.omitted_capability_shapes, key=lambda item: item.shape_id):
+        errors: list[str] = []
+        if shape.freshness_state is not CapabilityShapeFreshnessState.FRESH:
+            errors.append(f"{shape.shape_id}: freshness state is {shape.freshness_state.value}")
+        if shape.observed_at is None:
+            errors.append(f"{shape.shape_id}: observation is missing")
+        else:
+            observed = ensure_utc(shape.observed_at)
+            if observed > checked_now + timedelta(minutes=1):
+                errors.append(f"{shape.shape_id}: observed_at is in the future")
+            elif checked_now - observed > parse_duration_spec(shape.stale_after):
+                errors.append(
+                    f"{shape.shape_id}: observation stale; "
+                    f"observed_at={observed.isoformat()} stale_after={shape.stale_after}"
+                )
+        if not shape.evidence_refs:
+            errors.append(f"{shape.shape_id}: observation evidence refs missing")
+        checks.append(
+            OmittedShapeFreshnessCheck(
+                shape_id=shape.shape_id,
+                ok=not errors,
+                freshness_state=shape.freshness_state,
+                errors=tuple(errors),
+                blocked_reasons=tuple(shape.blocked_reasons),
+                evidence_refs=tuple(shape.evidence_refs),
+            )
+        )
+    return OmittedShapeFreshnessReport(
+        ok=all(check.ok for check in checks),
+        checked_at=checked_now,
+        shape_count=len(checks),
+        shapes=tuple(checks),
+    )
+
+def _dispatch_shape_identity(row: object) -> tuple[str, AuthorityCeiling, CapabilityShapeState]:
+    """Validate the non-supply facts that are safety-critical to dispatch isolation."""
+
+    if type(row) is not dict:
+        raise ValueError("omitted capability shape must be an object")
+    shape_id = row.get("shape_id")
+    if type(shape_id) is not str or not shape_id.strip():
+        raise ValueError("omitted capability shape_id must be non-empty text")
+    if row.get("descriptor_schema") != 1 or type(row.get("descriptor_schema")) is not int:
+        raise ValueError(f"{shape_id}: descriptor_schema must equal 1")
+    if row.get("demand_eligible") is not False:
+        raise ValueError(f"{shape_id}: omitted shape cannot become demand eligible")
+    if row.get("route_ids") != []:
+        raise ValueError(f"{shape_id}: omitted shape cannot name dispatch routes")
+    authority = AuthorityCeiling(row.get("authority_ceiling"))
+    state = CapabilityShapeState(row.get("shape_state"))
+    if state is CapabilityShapeState.EVIDENCE_ONLY:
+        if authority is not AuthorityCeiling.READ_ONLY:
+            raise ValueError(f"{shape_id}: evidence-only shape must remain read_only")
+        if row.get("surface_delta_signal") is not None:
+            raise ValueError(f"{shape_id}: evidence-only shape cannot emit surface deltas")
+        receipt_class = row.get("observation_receipt_class")
+        if type(receipt_class) is not str or not receipt_class.strip():
+            raise ValueError(f"{shape_id}: evidence-only shape requires a receipt class")
+    if is_agentic_trust_evidence_surface_identity(shape_id) and (
+        state is not CapabilityShapeState.EVIDENCE_ONLY
+        or row.get("observation_receipt_class") != AGENTIC_TRUST_EVIDENCE_RECEIPT_CLASS
+    ):
+        raise ValueError("agentic-trust evaluator permanent evidence-only identity drifted")
+    return shape_id, authority, state
+
+def _dispatch_safe_omitted_shapes(
+    rows: object,
+) -> tuple[list[CapabilityShapeDescriptor], tuple[str, ...]]:
+    """Fail local for observational metadata while preserving isolation invariants."""
+
+    if type(rows) is not list or not rows:
+        raise ValueError("omitted_capability_shapes must be a non-empty array")
+    shapes: list[CapabilityShapeDescriptor] = []
+    observation_errors: list[str] = []
+    for row in rows:
+        shape_id, authority, state = _dispatch_shape_identity(row)
+        try:
+            shapes.append(CapabilityShapeDescriptor.model_validate(row))
+            continue
+        except ValidationError as exc:
+            observation_errors.append(f"{shape_id}: {exc}")
+
+        raw = row if isinstance(row, dict) else {}
+        try:
+            shape_class = CapabilityShapeClass(raw.get("shape_class"))
+        except ValueError:
+            shape_class = CapabilityShapeClass.LOCAL_COMPUTE
+        signal = raw.get("surface_delta_signal")
+        if state is CapabilityShapeState.EVIDENCE_ONLY:
+            signal = None
+        elif type(signal) is not str or not signal.strip():
+            signal = f"capability_surface_delta:{shape_class.value}"
+        blocker = (
+            "deprecated_observation_metadata_invalid"
+            if state is CapabilityShapeState.DEPRECATED
+            else "observation_metadata_invalid_fail_local"
+        )
+        shapes.append(
+            CapabilityShapeDescriptor(
+                shape_id=shape_id,
+                shape_class=shape_class,
+                carrier_family=str(raw.get("carrier_family") or "invalid_observation_metadata"),
+                summary=str(raw.get("summary") or "Invalid observation metadata held fail-local."),
+                harness_shape=str(raw.get("harness_shape") or "observation-metadata-repair"),
+                authority_ceiling=authority,
+                shape_state=state,
+                demand_eligible=False,
+                route_ids=[],
+                resource_semantics=_nonempty_string_list(
+                    raw.get("resource_semantics"), "observation-metadata-invalid"
+                ),
+                spend_semantics=_nonempty_string_list(
+                    raw.get("spend_semantics"), "no-spend-authority"
+                ),
+                observability=_nonempty_string_list(
+                    raw.get("observability"), "observation-metadata-error"
+                ),
+                failure_classes=_nonempty_string_list(
+                    raw.get("failure_classes"), "observation_metadata_invalid"
+                ),
+                measurement_plan_refs=_nonempty_string_list(
+                    raw.get("measurement_plan_refs"), "require:repair-observation-metadata"
+                ),
+                remediation_refs=[
+                    "require:repair-platform-capability-registry-observation-metadata"
+                ],
+                surface_delta_signal=signal,
+                observation_receipt_class=(
+                    raw.get("observation_receipt_class")
+                    if type(raw.get("observation_receipt_class")) is str
+                    else None
+                ),
+                observed_at=None,
+                stale_after="1d",
+                freshness_state=CapabilityShapeFreshnessState.MISSING,
+                evidence_refs=[],
+                blocked_reasons=[blocker],
+            )
+        )
+    return shapes, tuple(observation_errors)
+
+def load_platform_capability_registry_for_dispatch(
+    path: Path | None = None,
+    *,
+    receipt_dir: Path | None = None,
+    now: datetime | None = None,
+    apply_receipts: bool = True,
+) -> tuple[PlatformCapabilityRegistry, tuple[str, ...]]:
+    """Load dispatch supply while failing non-supply observation defects locally.
+
+    ID, disposition, demand, route, authority, and receipt-class violations still
+    invalidate the registry globally. Only non-authoritative observation metadata is
+    replaced by a visible missing-evidence sentinel for this dispatch read path.
+    """
+
+    path = resolve_config_path(path, "platform-capability-registry.json")
+    try:
+        payload = _load_json_object(path)
+        shapes, observation_errors = _dispatch_safe_omitted_shapes(
+            payload.get("omitted_capability_shapes")
+        )
+        payload["omitted_capability_shapes"] = [shape.model_dump(mode="json") for shape in shapes]
+        registry = PlatformCapabilityRegistry.model_validate(payload)
+        effective_receipt_dir = (receipt_dir or _receipt_dir_from_env()) if apply_receipts else None
+        if effective_receipt_dir is not None:
+            registry = apply_platform_capability_receipts(
+                registry,
+                receipt_dir=effective_receipt_dir,
+                now=now,
+            )
+            registry = _apply_route_authority_receipts_from_dir(
+                registry,
+                receipt_dir=effective_receipt_dir,
+                now=now,
+            )
+        return registry, observation_errors
+    except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+        raise PlatformCapabilityRegistryError(
+            f"invalid dispatch platform capability registry at {path}: {exc}"
+        ) from exc
+
+
 _DYNAMIC_ENTRYPOINTS = (
     ScoreConfidence._score_evidence_is_freshness_typed,
     ToolState._tool_freshness_duration_is_valid,
@@ -2698,6 +3061,7 @@ _DYNAMIC_ENTRYPOINTS = (
     CapabilityShapeDescriptor._omitted_shape_is_not_supply,
     PlatformCapabilityRoute._route_contract_fails_closed,
     PlatformCapabilityRegistry._route_set_matches_contract,
+    disposition_for_capability_surface_delta,
     build_supply_vector,
     check_registry_freshness,
     load_platform_capability_registry,
