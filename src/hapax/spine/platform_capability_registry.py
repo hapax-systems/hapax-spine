@@ -31,8 +31,13 @@ from hapax.spine.platform_capability_receipts import (
     PLATFORM_CAPABILITY_RECEIPT_DIR_ENV,
     EvidenceStatus,
     PlatformCapabilityReceipt,
+    WrapperEvidence,
     load_platform_capability_receipts,
     receipt_reference,
+)
+from hapax.spine.quota_spend_ledger import (
+    CLAUDE_ADMISSION_COMPOSITE_REF_RE,
+    QUOTA_SPEND_LEDGER_LIVE_ENV,
 )
 from hapax.spine.route_metadata_schema import (
     BenchmarkCoverage,
@@ -104,6 +109,217 @@ def _nonempty_string_list(value: object, fallback: str) -> list[str]:
         return list(value)
     return [fallback]
 
+
+
+AGY_REVIEW_ROUTE_ID = "agy.review.direct"
+
+AGY_ROUTE_SPECIFIC_QUOTA_BLOCKER = "route_specific_quota_receipt_absent"
+
+GLMCP_REVIEW_ROUTE_ID = "glmcp.review.direct"
+
+GLMCP_REVIEW_ADMISSION_BLOCKER = "glmcp_review_seat_receipt_admission_required"
+
+CLAUDE_HEADLESS_ROUTE_ID = "claude.headless.full"
+
+CLAUDE_INTERACTIVE_ROUTE_ID = "claude.interactive.full"
+
+CLAUDE_REVIEW_ROUTE_ID = "claude.review.opus"
+
+CLAUDE_REVIEW_ADMISSION_BLOCKER = "claude_review_seat_receipt_admission_required"
+
+CLAUDE_REVIEW_ROUTE_SPECIFIC_QUOTA_BLOCKER = "claude_review_route_specific_quota_receipt_absent"
+
+CLAUDE_ACCOUNT_LIVE_QUOTA_BLOCKER = "account_live_quota_receipt_absent"
+
+KIMI_INTERACTIVE_ROUTE_ID = "kimi.interactive.lane"
+
+KIMI_ROUTE_SPECIFIC_QUOTA_BLOCKER = "route_specific_quota_receipt_absent"
+
+ROUTE_SPECIFIC_QUOTA_ADMISSION_BLOCKERS = {
+    AGY_REVIEW_ROUTE_ID: AGY_ROUTE_SPECIFIC_QUOTA_BLOCKER,
+    GLMCP_REVIEW_ROUTE_ID: GLMCP_REVIEW_ADMISSION_BLOCKER,
+    # Claude full routes: a fresh live ledger admission (telemetry-writer-folded) injects the
+    # account-live-quota:observed evidence ref into quota freshness so the availability guarantor
+    # attests. Without a live ledger, _route_specific_quota_admission_fresh returns (False, ()) and
+    # the route stays held — lane/session presence never clears this.
+    CLAUDE_HEADLESS_ROUTE_ID: CLAUDE_ACCOUNT_LIVE_QUOTA_BLOCKER,
+    CLAUDE_INTERACTIVE_ROUTE_ID: CLAUDE_ACCOUNT_LIVE_QUOTA_BLOCKER,
+    CLAUDE_REVIEW_ROUTE_ID: CLAUDE_REVIEW_ROUTE_SPECIFIC_QUOTA_BLOCKER,
+    # kimi.interactive.lane: same contract — a hapax.kimi_quota_admission.v1 receipt minted by
+    # ~/.local/bin/hapax-kimi-quota-admission and folded into the live ledger by the telemetry
+    # writer (PR #4660) clears the fail-closed receipt blocker. The route id follows the minter's
+    # live contract (ROUTE_ID = "kimi.interactive.lane"), not the claude .interactive.full shape.
+    # Lane/session presence never clears this (review finding gemini-1, 2026-09-12: a route
+    # missing from this set can never clear its config-recorded blocker).
+    KIMI_INTERACTIVE_ROUTE_ID: KIMI_ROUTE_SPECIFIC_QUOTA_BLOCKER,
+}
+
+_WRAPPER_CAPABILITY_REASON_PREFIXES = (
+    "sanctioned_wrapper_not_executable",
+    "sanctioned_wrapper_missing_or_unreadable",
+)
+
+_WRAPPER_RESOURCE_REASONS = frozenset({"wrapper_not_executable", "wrapper_missing"})
+
+def _ref_tokens(ref: str) -> tuple[str, ...]:
+    normalized = re.sub(r"[\s_:]+", "-", ref.strip().lower())
+    if not normalized:
+        return ()
+    return tuple(token for token in normalized.split("-") if token)
+
+def _ref_has_token_suffix(ref: str, suffix: str) -> bool:
+    ref_tokens = _ref_tokens(ref)
+    suffix_tokens = _ref_tokens(suffix)
+    return bool(suffix_tokens) and ref_tokens[-len(suffix_tokens) :] == suffix_tokens
+
+def _wrapper_reason_label(wrapper: WrapperEvidence) -> str:
+    label = Path(wrapper.path).name or wrapper.path
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-") or "unknown-wrapper"
+
+def _wrapper_capability_reason(reason: str) -> bool:
+    return any(
+        reason == prefix or reason.startswith(f"{prefix}:")
+        for prefix in _WRAPPER_CAPABILITY_REASON_PREFIXES
+    )
+
+def _route_wrapper_for_receipt(
+    route_payload: dict[str, Any],
+    receipt: PlatformCapabilityReceipt,
+) -> WrapperEvidence:
+    return receipt.route_wrappers.get(str(route_payload.get("route_id") or "")) or receipt.wrapper
+
+def _wrapper_capability_reason_codes(wrapper: WrapperEvidence) -> list[str]:
+    if wrapper.exists and wrapper.executable and wrapper.sha256:
+        return []
+    if wrapper.exists and wrapper.sha256 and not wrapper.executable:
+        return [
+            "sanctioned_wrapper_not_executable",
+            f"sanctioned_wrapper_not_executable:{_wrapper_reason_label(wrapper)}",
+        ]
+    return [
+        "sanctioned_wrapper_missing_or_unreadable",
+        f"sanctioned_wrapper_missing_or_unreadable:{_wrapper_reason_label(wrapper)}",
+    ]
+
+def _wrapper_resource_reason_codes(wrapper: WrapperEvidence) -> list[str]:
+    if wrapper.exists and wrapper.executable and wrapper.sha256:
+        return []
+    if wrapper.exists and not wrapper.executable:
+        return ["wrapper_not_executable"]
+    return ["wrapper_missing"]
+
+def _wrapper_resource_refs(wrapper: WrapperEvidence) -> list[str]:
+    return [
+        f"local:{wrapper.path}:exists:{str(wrapper.exists).lower()}",
+        f"local:{wrapper.path}:executable:{str(wrapper.executable).lower()}",
+    ]
+
+def _wrapper_capability_refs(wrapper: WrapperEvidence) -> list[str]:
+    if not (wrapper.exists and wrapper.executable and wrapper.sha256):
+        return []
+    return [f"local:{wrapper.path}:sha256:{wrapper.sha256}"]
+
+def _route_receipt_capability_reason_codes(
+    receipt: PlatformCapabilityReceipt,
+    wrapper: WrapperEvidence,
+) -> list[str]:
+    if not receipt.route_wrappers:
+        return receipt.capability.reason_codes
+    receipt_reasons = receipt.capability.reason_codes
+    receipt_reasons = [
+        reason for reason in receipt_reasons if not _wrapper_capability_reason(reason)
+    ]
+    return list(dict.fromkeys([*receipt_reasons, *_wrapper_capability_reason_codes(wrapper)]))
+
+def _route_receipt_resource_reason_codes(
+    receipt: PlatformCapabilityReceipt,
+    wrapper: WrapperEvidence,
+) -> list[str]:
+    if not receipt.route_wrappers:
+        return receipt.resource.reason_codes
+    receipt_reasons = receipt.resource.reason_codes
+    receipt_reasons = [
+        reason for reason in receipt_reasons if reason not in _WRAPPER_RESOURCE_REASONS
+    ]
+    return list(dict.fromkeys([*receipt_reasons, *_wrapper_resource_reason_codes(wrapper)]))
+
+def _surface_status_from_reasons(
+    default_status: EvidenceStatus,
+    reason_codes: list[str],
+) -> EvidenceStatus:
+    if not reason_codes:
+        return EvidenceStatus.OBSERVED
+    if default_status is EvidenceStatus.MISSING:
+        return EvidenceStatus.MISSING
+    return EvidenceStatus.BLOCKED
+
+ADMISSION_RECEIPT_POOL_RE = re.compile(
+    r"-pool-(?P<pool>[a-z0-9][a-z0-9-]{0,30}[a-z0-9])-\d{8}t\d{4}(?:\d{2})?z\.yaml\Z"
+)
+
+def _admission_refs_name_pool(evidence_refs: Iterable[str], pool: str) -> bool:
+    """True iff there is a Claude admission ref and every one's receipt names exactly ``pool``."""
+    labels = [
+        match.group("label")
+        for ref in evidence_refs
+        if (match := CLAUDE_ADMISSION_COMPOSITE_REF_RE.fullmatch(ref)) is not None
+    ]
+    return bool(labels) and all(_receipt_label_pool(label) == pool for label in labels)
+
+def _receipt_label_pool(label: str) -> str | None:
+    # The leftmost -pool- wins, so a label naming two pools parses as one pool neither names.
+    _, marker, suffix = label.partition("-pool-")
+    match = ADMISSION_RECEIPT_POOL_RE.fullmatch(marker + suffix) if marker else None
+    return match.group("pool") if match else None
+
+def _quota_spend_live_path_from_env() -> Path | None:
+    configured = os.environ.get(QUOTA_SPEND_LEDGER_LIVE_ENV)
+    if not configured:
+        return None
+    if configured.strip() in {"0", "none", "None", "false", "False"}:
+        return Path("/dev/null/hapax-quota-spend-ledger-live-disabled.json")
+    return Path(configured).expanduser()
+
+def _receipt_measures_capability_scores(
+    route_payload: dict[str, Any],
+    receipt: PlatformCapabilityReceipt,
+    *,
+    capability_status: EvidenceStatus | None = None,
+) -> bool:
+    if (capability_status or receipt.capability.status) is not EvidenceStatus.OBSERVED:
+        return False
+    capability_blockers = set(
+        route_payload.get("freshness", {})
+        .get("evidence", {})
+        .get("capability", {})
+        .get("blocked_reasons", [])
+    )
+    top_blockers = set(route_payload.get("blocked_reasons") or [])
+    unmeasured_score_blockers = {
+        "capability_scores_asserted_not_measured",
+        "capabilityio_measurement_absent",
+    }
+    return not (capability_blockers | top_blockers) & unmeasured_score_blockers
+
+def _quota_receipt_removable_reasons(route_payload: dict[str, Any]) -> set[str]:
+    if route_payload.get("route_id") in {"agy.review.direct", CLAUDE_REVIEW_ROUTE_ID}:
+        # Platform receipts can prove local reviewer wrapper availability only.
+        # Route-specific quota admission is consumed from the live quota ledger,
+        # not from a platform-capability quota receipt.
+        return set()
+    if (
+        ROUTE_SPECIFIC_QUOTA_ADMISSION_BLOCKERS.get(route_payload.get("route_id"))
+        == CLAUDE_ACCOUNT_LIVE_QUOTA_BLOCKER
+    ):
+        return {"quota_telemetry_unknown"}
+    return {"account_live_quota_receipt_absent", "quota_telemetry_unknown"}
+
+def _observed_quota_receipt_removable_reasons(route_payload: dict[str, Any]) -> set[str]:
+    if route_payload.get("route_id") == "agy.review.direct":
+        return set()
+    return _quota_unobservable_removable_reasons(route_payload) | _quota_receipt_removable_reasons(
+        route_payload
+    )
 
 
 class PlatformCapabilityRegistryError(ValueError):
@@ -1909,10 +2125,22 @@ def load_platform_capability_registry(
 
 
 def _receipt_dir_from_env() -> Path | None:
+    """Resolve the receipt directory for the dispatch read-path.
+
+    Defaults to ``DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR`` when
+    ``HAPAX_PLATFORM_CAPABILITY_RECEIPT_DIR`` is unset, so minted receipts are
+    discovered without the env var being set — otherwise admission silently
+    reads every route as receipt-absent while fresh receipts sit on disk
+    (capability_admission.py:619's loader call supplies no receipt_dir).
+    Set the env var to a path to override, or to one of
+    ``{"", "0", "none", "false"}`` (``none``/``false`` case-insensitive) to
+    disable receipt loading entirely. Mirrors dispatcher_policy's copy, which
+    carries the established docstring and test pin.
+    """
     configured = os.environ.get(PLATFORM_CAPABILITY_RECEIPT_DIR_ENV)
-    if not configured:
-        return None
-    if configured.strip() in {"0", "none", "None", "false", "False"}:
+    if configured is None:
+        return DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR
+    if configured.strip() in {"", "0", "none", "None", "false", "False"}:
         return None
     return Path(configured).expanduser()
 
@@ -2084,6 +2312,10 @@ def _quota_unobservable_nonblocking(
 
 def _capability_receipt_removable_reasons(route_payload: dict[str, Any]) -> set[str]:
     reasons = {"fresh_capability_evidence_absent"}
+    if route_payload.get("route_id") == "agy.review.direct":
+        reasons.add("agy_review_seat_receipt_admission_required")
+    if route_payload.get("route_id") == CLAUDE_REVIEW_ROUTE_ID:
+        reasons.add(CLAUDE_REVIEW_ADMISSION_BLOCKER)
     if route_payload.get("route_id") == "api.headless.provider_gateway":
         reasons.add("provider_gateway_evidence_absent")
     return reasons
@@ -2097,7 +2329,12 @@ def _resource_receipt_removable_reasons(route_payload: dict[str, Any]) -> set[st
 
 
 def _quota_unobservable_removable_reasons(route_payload: dict[str, Any]) -> set[str]:
-    reasons = {"account_live_quota_receipt_absent", "quota_telemetry_unknown"}
+    reasons = {"quota_telemetry_unknown"}
+    if (
+        ROUTE_SPECIFIC_QUOTA_ADMISSION_BLOCKERS.get(route_payload.get("route_id"))
+        != CLAUDE_ACCOUNT_LIVE_QUOTA_BLOCKER
+    ):
+        reasons.add(CLAUDE_ACCOUNT_LIVE_QUOTA_BLOCKER)
     if route_payload.get("capacity_pool") in {
         CapacityPool.API_PAID_SPEND.value,
         CapacityPool.BOOTSTRAP_BUDGET.value,
@@ -2229,6 +2466,7 @@ _DYNAMIC_ENTRYPOINTS = (
     SupplyFreshness._freshness_duration_is_valid,
     FreshnessSurfaceEvidence._has_evidence_or_blocker,
     Freshness._duration_specs_are_valid,
+    CapabilityShapeDescriptor._omitted_shape_is_not_supply,
     PlatformCapabilityRoute._route_contract_fails_closed,
     PlatformCapabilityRegistry._route_set_matches_contract,
     build_supply_vector,
