@@ -2,21 +2,31 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from test_obs0b_s03_parity import root as registry_payload
 
-import hapax.spine.dispatcher_policy as dispatcher_policy
-
+from hapax.spine import dispatcher_policy
 
 NOW = datetime(2026, 7, 5, 16, 0, tzinfo=UTC)
-REGISTRY = Path(__file__).parent / "fixtures" / "platform-capability-registry.json"
+
+
+@pytest.fixture
+def registry_path(tmp_path: Path) -> Path:
+    """Use the current-schema OBS builder; the legacy JSON remains raw test data."""
+    path = tmp_path / "config" / "platform-capability-registry.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps(registry_payload()), encoding="utf-8")
+    return path
 
 
 def test_policy_sources_fail_soft_when_quota_fixture_resolution_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    registry_path: Path,
 ) -> None:
     def fail_fixture_resolution(*, live_path: Path | None = None) -> object:
         raise RuntimeError(
@@ -41,7 +51,7 @@ def test_policy_sources_fail_soft_when_quota_fixture_resolution_fails(
     dispatcher_policy.write_route_authority_receipt(receipt, receipt_dir=tmp_path)
 
     sources = dispatcher_policy.load_dispatch_policy_sources(
-        registry_path=REGISTRY,
+        registry_path=registry_path,
         receipt_dir=tmp_path,
         now=NOW,
     )
@@ -58,6 +68,7 @@ def test_policy_sources_fail_soft_when_quota_fixture_resolution_fails(
 
 def test_policy_sources_do_not_mask_unexpected_quota_runtime_errors(
     monkeypatch: pytest.MonkeyPatch,
+    registry_path: Path,
 ) -> None:
     def fail_unexpectedly(*, live_path: Path | None = None) -> object:
         raise RuntimeError("unexpected quota resolver bug")
@@ -69,4 +80,4 @@ def test_policy_sources_do_not_mask_unexpected_quota_runtime_errors(
     )
 
     with pytest.raises(RuntimeError, match="unexpected quota resolver bug"):
-        dispatcher_policy.load_dispatch_policy_sources(registry_path=REGISTRY)
+        dispatcher_policy.load_dispatch_policy_sources(registry_path=registry_path)
