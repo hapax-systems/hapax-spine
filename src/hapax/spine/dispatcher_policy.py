@@ -11,7 +11,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Mapping, Sequence
+import re
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -20,12 +21,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, model_validator
 
+from hapax.spine.agentic_trust_boundary import is_syntactically_typed_policy_evidence_reference
+from hapax.spine.capability_surface_delta import (
+    CapabilitySurfaceDelta,
+    CapabilitySurfaceDeltaError,
+    load_capability_surface_delta_file,
+)
 from hapax.spine.platform_capability_receipts import (
     DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR,
     PLATFORM_CAPABILITY_RECEIPT_DIR_ENV,
 )
 from hapax.spine.platform_capability_registry import (
-    PLATFORM_CAPABILITY_REGISTRY,
     Effort,
     PlatformCapabilityRegistry,
     PlatformCapabilityRegistryError,
@@ -34,7 +40,9 @@ from hapax.spine.platform_capability_registry import (
     SupplyVector,
     build_supply_vector,
     check_registry_freshness,
-    load_platform_capability_registry,
+    load_platform_capability_registry_for_dispatch,
+    normalize_capability_surface_identity,
+    normalize_supply_admission_identity,
     normalize_route_id,
 )
 from hapax.spine.quota_spend_ledger import (
@@ -64,6 +72,8 @@ DIMENSIONAL_ROUTE_RECEIPT_SCHEMA_VERSION = 1
 ROUTE_AUTHORITY_RECEIPT_SCHEMA_VERSION = 1
 ROUTE_AUTHORITY_RECEIPT_DIRNAME = "route-authority"
 ROUTING_MODEL_VERSION = "capacity-dimensional-v1"
+CAPABILITY_SURFACE_DELTA_PATH_ENV = "HAPAX_CAPABILITY_SURFACE_DELTA_FILE"
+GLOBAL_SURFACE_DELTA_ROUTE_KEY = "__all__"
 PAID_CAPACITY_POOLS = frozenset({"api_paid_spend", "bootstrap_budget", "incident_override"})
 UNKNOWN_OR_RISKY_PRIVACY_POSTURES = frozenset(
     {"provider_training_unknown", "public_risk", "unknown"}
@@ -230,6 +240,8 @@ class RouteAuthorityReceipt(_PolicyModel):
         "quality_equivalence",
         "runtime_actuation",
         "connector_mutation",
+        "local_inference_entitlement",
+        "read_only_fetch",
     ]
     route_id: str
     issued_at: datetime
@@ -246,6 +258,12 @@ class RouteAuthorityReceipt(_PolicyModel):
         _parse_duration_spec(self.stale_after)
         if not self.signed_by.strip():
             raise ValueError("signed_by is required")
+        if any(
+            not is_syntactically_typed_policy_evidence_reference(ref) for ref in self.evidence_refs
+        ):
+            raise ValueError(
+                "route-authority evidence_refs must be namespaced non-observation policy references"
+            )
         expected = route_authority_receipt_payload_hash(self)
         if self.signed_payload_sha256 != expected:
             raise ValueError("signed payload hash mismatch")
@@ -253,11 +271,30 @@ class RouteAuthorityReceipt(_PolicyModel):
             raise ValueError("quality_equivalence receipts require quality_floors")
         if self.receipt_type == "opus_model_entitlement" and not self.route_id.endswith(".opus"):
             raise ValueError("opus_model_entitlement receipts must target an opus route")
+        if self.receipt_type == "local_inference_entitlement" and not self.route_id.startswith(
+            "local_tool."
+        ):
+            raise ValueError(
+                "local_inference_entitlement receipts must target a local_tool route "
+                f"(got route_id={self.route_id!r}); re-mint with --route-id local_tool.local.worker "
+                "(or the intended local_tool.* route)."
+            )
         if self.receipt_type in {"runtime_actuation", "connector_mutation"}:
             if not self.task_ids:
                 raise ValueError(f"{self.receipt_type} receipts require task_ids")
             if not self.mutation_surfaces:
                 raise ValueError(f"{self.receipt_type} receipts require mutation_surfaces")
+        if self.receipt_type == "read_only_fetch":
+            if len(self.task_ids) != 1 or not self.task_ids[0].strip():
+                raise ValueError("read_only_fetch requires one task; re-mint for the intended task")
+            if self.mutation_surfaces or self.quality_floors:
+                raise ValueError("read_only_fetch cannot grant mutation or quality; remove them")
+            bindings = [ref for ref in self.evidence_refs
+                        if re.fullmatch(r"candidate-binding-sha256:[0-9a-f]{64}", ref)]
+            if len(bindings) != 1:
+                raise ValueError("bind read_only_fetch to one current candidate-binding-sha256 ref")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", self.receipt_id):
+                raise ValueError("use a safe read_only_fetch receipt_id without path separators")
         return self
 
 
@@ -374,10 +411,130 @@ class DispatchPolicySources(_PolicyModel):
     quota_ledger_source: str | None = None
     quota_live_error: str | None = None
     route_authority_receipts: tuple[RouteAuthorityReceipt, ...] = Field(default=())
+    non_supply_observation_errors: tuple[str, ...] = Field(default=())
+    surface_delta_refs_by_route: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    surface_delta_blockers_by_route: dict[str, tuple[str, ...]] = Field(default_factory=dict)
 
 
 def now_utc() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
+
+
+def _surface_delta_descriptor_route_keys(descriptor: Any) -> tuple[str, ...]:
+  keys = set()
+  if descriptor.surface_id.startswith("route."):
+    keys.add(normalize_route_id(descriptor.surface_id.removeprefix("route.")))
+  if descriptor.route_id:
+    keys.add(normalize_route_id(descriptor.route_id))
+  return tuple(sorted(keys))
+
+def _surface_delta_dispatch_lookup_keys(keys: Sequence[str]) -> set[str]:
+  return {key for key in keys if ":" not in key and not key.startswith(("route.", "surface."))}
+
+def _surface_delta_path_from_env() -> Path | None:
+  configured = os.environ.get(CAPABILITY_SURFACE_DELTA_PATH_ENV)
+  if configured is None:
+    return None
+  if configured.strip() in {"", "0", "none", "None", "false", "False"}:
+    return None
+  return Path(configured).expanduser()
+
+def _surface_delta_producer_error_ref(path: Path, exc: Exception) -> str:
+  digest = hashlib.sha256(f"{path}:{exc}".encode()).hexdigest()[:16]
+  return f"capability_surface_delta:unknown:producer_file:{path.name}:{digest}:invalid_or_unreadable"
+
+def _surface_delta_ref(delta: CapabilitySurfaceDelta) -> str:
+  return (f"capability_surface_delta:{delta.freshness_state.value}:"
+          f"{delta.surface_id}:{delta.delta_id}")
+
+def _surface_delta_route_index(
+  path: Path, *,
+  known_route_ids: Iterable[str] | None = None,
+  evidence_only_surface_ids: Iterable[str] | None = None,
+) -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]:
+  producer_file = load_capability_surface_delta_file(path)
+  known_route_values = tuple(known_route_ids) if known_route_ids is not None else None
+  known_routes = (
+    {normalize_route_id(route_id) for route_id in known_route_values}
+    if known_route_values is not None
+    else None
+  )
+  known_route_identities = {
+    normalize_supply_admission_identity(route_id) for route_id in known_route_values or ()
+  }
+  evidence_only_surfaces = {
+    normalize_capability_surface_identity(surface_id)
+    for surface_id in evidence_only_surface_ids or ()
+  }
+  descriptor_keys_by_ref: dict[str, set[str]] = {}
+  for descriptor in producer_file.descriptors:
+    keys = set(_surface_delta_descriptor_route_keys(descriptor))
+    for descriptor_ref in {descriptor.descriptor_ref, descriptor.surface_id, *descriptor.evidence_refs}:
+      descriptor_keys_by_ref.setdefault(descriptor_ref, set()).update(keys)
+  descriptor_keys_by_ref_frozen = {
+    key: tuple(sorted(values)) for key, values in descriptor_keys_by_ref.items()
+  }
+  refs: dict[str, list[str]] = {}
+  blockers: dict[str, list[str]] = {}
+  for delta in producer_file.deltas:
+    normalized_surface = normalize_capability_surface_identity(delta.surface_id)
+    if (
+      normalized_surface in evidence_only_surfaces
+      and normalize_supply_admission_identity(delta.surface_id) not in known_route_identities
+    ):
+      continue
+    delta_ref = _surface_delta_ref(delta)
+    route_keys, dispatch_keys = _surface_delta_route_key_sets(delta, descriptor_keys_by_ref_frozen)
+    if (
+      known_routes is not None
+      and not delta.allows_demand_fulfillment()
+      and not (dispatch_keys & known_routes)
+    ):
+      route_keys.add(GLOBAL_SURFACE_DELTA_ROUTE_KEY)
+    if known_routes is None and not delta.allows_demand_fulfillment() and not dispatch_keys:
+      route_keys.add(GLOBAL_SURFACE_DELTA_ROUTE_KEY)
+    for key in route_keys:
+      refs.setdefault(key, []).append(delta_ref)
+      if not delta.allows_demand_fulfillment():
+        blockers.setdefault(key, []).append(delta_ref)
+  return (
+    {key: tuple(dict.fromkeys(values)) for key, values in refs.items()},
+    {key: tuple(dict.fromkeys(values)) for key, values in blockers.items()},
+  )
+
+def _surface_delta_route_key_sets(
+  delta: CapabilitySurfaceDelta, descriptor_keys_by_ref: Mapping[str, Sequence[str]],
+) -> tuple[set[str], set[str]]:
+  keys = {delta.surface_id}
+  dispatch_keys: set[str] = set()
+  if delta.surface_id.startswith("route."):
+    route_key = normalize_route_id(delta.surface_id.removeprefix("route."))
+    keys.add(route_key)
+    dispatch_keys.add(route_key)
+
+  def join_ref(ref: str) -> None:
+    keys.add(ref)
+    joined_keys = tuple(descriptor_keys_by_ref.get(ref, ()))
+    keys.update(joined_keys)
+    dispatch_keys.update(_surface_delta_dispatch_lookup_keys(joined_keys))
+
+  join_ref(delta.surface_id)
+  if delta.prior_descriptor_ref:
+    join_ref(delta.prior_descriptor_ref)
+  if delta.observed_descriptor_ref:
+    join_ref(delta.observed_descriptor_ref)
+  for evidence_ref in delta.evidence_refs:
+    join_ref(evidence_ref)
+  return keys, dispatch_keys
+
+def _surface_delta_values_for_route(
+  mapping: Mapping[str, Sequence[str]] | None, route_id: str,
+) -> tuple[str, ...]:
+  if not mapping:
+    return ()
+  route_values = tuple(mapping.get(route_id, ()))
+  global_values = tuple(mapping.get(GLOBAL_SURFACE_DELTA_ROUTE_KEY, ()))
+  return tuple(dict.fromkeys((*route_values, *global_values)))
 
 
 def load_dispatch_policy_sources(
@@ -385,6 +542,7 @@ def load_dispatch_policy_sources(
     registry_path: Path | None = None,
     quota_ledger_path: Path | None = None,
     receipt_dir: Path | None = None,
+    surface_delta_path: Path | None = None,
     now: datetime | None = None,
 ) -> DispatchPolicySources:
     """Load inert policy sources, turning failures into request evidence."""
@@ -396,11 +554,14 @@ def load_dispatch_policy_sources(
     quota_ledger_source: str | None = None
     quota_live_error: str | None = None
     route_authority_receipts: tuple[RouteAuthorityReceipt, ...] = ()
+    non_supply_observation_errors: tuple[str, ...] = ()
+    surface_delta_refs_by_route: dict[str, tuple[str, ...]] = {}
+    surface_delta_blockers_by_route: dict[str, tuple[str, ...]] = {}
 
     try:
         effective_receipt_dir = receipt_dir or _receipt_dir_from_env()
-        registry = load_platform_capability_registry(
-            registry_path or PLATFORM_CAPABILITY_REGISTRY,
+        registry, non_supply_observation_errors = load_platform_capability_registry_for_dispatch(
+            registry_path,
             receipt_dir=effective_receipt_dir,
             now=now,
         )
@@ -438,6 +599,25 @@ def load_dispatch_policy_sources(
         quota_ledger = None
         quota_error = str(exc)
 
+    surface_delta_file = surface_delta_path or _surface_delta_path_from_env()
+    if surface_delta_file is not None:
+        try:
+            surface_delta_refs_by_route, surface_delta_blockers_by_route = _surface_delta_route_index(
+                surface_delta_file,
+                known_route_ids=registry.route_map().keys() if registry is not None else None,
+                evidence_only_surface_ids=(
+                    shape.shape_id
+                    for shape in registry.omitted_capability_shapes
+                    if shape.shape_state.value == "evidence_only"
+                )
+                if registry is not None
+                else None,
+            )
+        except (CapabilitySurfaceDeltaError, OSError, ValueError) as exc:
+            error_ref = _surface_delta_producer_error_ref(surface_delta_file, exc)
+            surface_delta_refs_by_route = {GLOBAL_SURFACE_DELTA_ROUTE_KEY: (error_ref,)}
+            surface_delta_blockers_by_route = {GLOBAL_SURFACE_DELTA_ROUTE_KEY: (error_ref,)}
+
     return DispatchPolicySources(
         registry=registry,
         registry_error=registry_error,
@@ -446,6 +626,9 @@ def load_dispatch_policy_sources(
         quota_ledger_source=quota_ledger_source,
         quota_live_error=quota_live_error,
         route_authority_receipts=route_authority_receipts,
+        non_supply_observation_errors=non_supply_observation_errors,
+        surface_delta_refs_by_route=surface_delta_refs_by_route,
+        surface_delta_blockers_by_route=surface_delta_blockers_by_route,
     )
 
 
@@ -992,7 +1175,7 @@ def apply_route_authority_receipts(
     payload = registry.model_dump(mode="json")
     routes_by_id = {route["route_id"]: route for route in payload["routes"]}
     for receipt in authority_receipts:
-        if receipt.receipt_type in {"runtime_actuation", "connector_mutation"}:
+        if receipt.receipt_type in {"runtime_actuation", "connector_mutation", "read_only_fetch"}:
             continue
         route_id = normalize_route_id(receipt.route_id)
         route_payload = routes_by_id.get(route_id)
@@ -1022,7 +1205,7 @@ def _load_fresh_route_authority_receipts(
             raise ValueError(f"invalid route authority receipt at {path}: {exc}") from exc
         if not _route_authority_receipt_is_fresh(receipt, now=checked_now):
             continue
-        if receipt.receipt_type in {"runtime_actuation", "connector_mutation"}:
+        if receipt.receipt_type in {"runtime_actuation", "connector_mutation", "read_only_fetch"}:
             key = (
                 normalize_route_id(receipt.route_id),
                 receipt.receipt_type,
@@ -1059,22 +1242,25 @@ def _apply_route_authority_receipt_to_route_payload(
         if reason not in removable_reasons
     ]
     freshness = route_payload["freshness"]
-    capability_evidence = freshness["evidence"]["capability"]
-    capability_evidence["blocked_reasons"] = [
-        reason
-        for reason in capability_evidence.get("blocked_reasons", [])
-        if reason not in removable_reasons
-    ]
-    capability_evidence["evidence_refs"] = list(
-        dict.fromkeys(
-            [
-                *capability_evidence.get("evidence_refs", []),
-                *receipt.evidence_refs,
-                receipt_ref,
-            ]
-        )
-    )
     issued_at = _coerce_utc(receipt.issued_at).isoformat().replace("+00:00", "Z")
+    receipt_evidence_refs = [*receipt.evidence_refs, receipt_ref]
+    for surface_name, surface_payload in freshness["evidence"].items():
+        original = surface_payload.get("blocked_reasons", [])
+        if not original:
+            continue
+        remaining = [reason for reason in original if reason not in removable_reasons]
+        if remaining == original:
+            continue
+        surface_payload["blocked_reasons"] = remaining
+        surface_payload["evidence_refs"] = list(
+            dict.fromkeys([*surface_payload.get("evidence_refs", []), *receipt_evidence_refs])
+        )
+        freshness[f"{surface_name}_checked_at"] = issued_at
+        freshness[f"{surface_name}_stale_after"] = receipt.stale_after
+    capability_evidence = freshness["evidence"]["capability"]
+    capability_evidence["evidence_refs"] = list(
+        dict.fromkeys([*capability_evidence.get("evidence_refs", []), *receipt_evidence_refs])
+    )
     freshness["capability_checked_at"] = issued_at
     freshness["capability_stale_after"] = receipt.stale_after
 
@@ -1112,7 +1298,13 @@ def _apply_route_authority_receipt_to_route_payload(
 def _route_authority_removable_reasons(receipt: RouteAuthorityReceipt) -> set[str]:
     if receipt.receipt_type == "opus_model_entitlement":
         return {"opus_model_entitlement_receipt_absent", "fresh_capability_evidence_absent"}
-    if receipt.receipt_type in {"runtime_actuation", "connector_mutation"}:
+    if receipt.receipt_type == "local_inference_entitlement":
+        return {
+            "local_inference_worker_receipt_admission_required",
+            "fresh_capability_evidence_absent",
+            "quota_telemetry_unknown",
+        }
+    if receipt.receipt_type in {"runtime_actuation", "connector_mutation", "read_only_fetch"}:
         return set()
     return {"quality_equivalence_record_absent", "fresh_capability_evidence_absent"}
 
