@@ -376,6 +376,7 @@ class Profile(StrEnum):
     PROVIDER_GATEWAY = "provider_gateway"
     SONNET = "sonnet"
     SPARK = "spark"
+    GEMMA3_4B_REVIEWBENCH = "gemma3_4b_reviewbench"
     WORKER = "worker"
 
 
@@ -432,6 +433,7 @@ class ModelId(StrEnum):
     GPT_5_3_CODEX_SPARK = "gpt-5.3-codex-spark"
     GPT_OSS_120B = "gpt-oss-120b"
     COMMAND_R_08_2024 = "command-r-08-2024"
+    GEMMA3_4B = "gemma3:4b"
     QWEN3_5_9B = "qwen3.5-9b"
     MISTRAL_MEDIUM_3_5 = "mistral-medium-3.5"
     GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview"

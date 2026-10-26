@@ -1,8 +1,8 @@
 """S01 package tests; no Council import, host probe, credential or provider call.
 
-Concrete catalog/quality cases project Council cef55b5216574f7eb80fd42c887c58e83f7cace0
+Concrete catalog/quality cases project Council 6e44a6999c8b949b8156d9ec2946b9149e1ffcde
 config/platform-capability-registry.json (sha256
-7d7518c484b90dbb16728993a4c9b5a69b0ad402bb541d254c447470f16d73ca).
+8dd944b2b7101f0834e5a73537e701c17446f670c4becb2929688a555e3e82cc).
 The remaining cases are labeled adversarial constructions, not live observations.
 Run this file with --mutation-controls for explicit source-break/restore controls.
 """
@@ -33,6 +33,7 @@ QUALITY = {
     ("codex", "full", "oauth", "gpt-6-astra"),
     ("agy", "direct", "operator_session", "gemini-4-argon"),
     ("glmcp", "direct", "subscription", "z_ai-glm-5.2"),
+    ("local_tool", "gemma3_4b_reviewbench", "local", "gemma3:4b"),
 ])
 def test_current_registry_catalog(platform, profile, auth, model):
     assert registry.Platform(platform).value == platform
@@ -49,7 +50,7 @@ def test_additional_pinned_catalog_members(model):
 
 
 @pytest.mark.parametrize("enum,value", [("Platform", "grok"), ("ModelId", "grok-build"),
-    ("ModelId", "gemma3:4b"), ("ModelId", "invented-model"), ("Platform", "invented-platform"),
+    ("ModelId", "invented-model"), ("Platform", "invented-platform"),
     ("Profile", "invented-profile"), ("AuthSurface", "invented-auth")])
 def test_catalog_rejects_retired_and_unknown(enum, value):
     with pytest.raises(ValueError):
