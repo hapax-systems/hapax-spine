@@ -12,11 +12,20 @@ import re
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    model_validator,
+)
 
 from hapax.spine.agentic_trust_boundary import is_syntactically_typed_policy_evidence_reference
+from hapax.spine.quota_spend_ledger import _reject_private_or_identity_refs
 
 DEFAULT_PLATFORM_CAPABILITY_RECEIPT_DIR = (
     Path.home() / ".cache" / "hapax" / "platform-capability-receipts"
@@ -154,6 +163,97 @@ class BareHostCliProbeReceiptV1(StrictReceiptModel):
         return self
 
 
+EntitlementLabel = Annotated[str, Field(strict=True, pattern=r"^[a-z][a-z0-9_.-]{0,95}$")]
+
+class EntitlementMetadata(StrictReceiptModel):
+    """Owner-exported account evidence; never authentication or admission by itself.
+
+    The composition root establishes custody before supplying this metadata.
+    Identity-bearing tenant names must be replaced upstream with opaque digests.
+    """
+
+    provider: EntitlementLabel
+    product: EntitlementLabel
+    auth_origin: EntitlementLabel
+    tenant_ref: str = Field(strict=True, pattern=r"^tenant:[0-9a-f]{64}$")
+    cohort: EntitlementLabel
+    pool_id: EntitlementLabel
+    policy_digest: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    observed_at: datetime
+    fresh_until: datetime
+    credit_expires_at: datetime | None = None
+    supported_knobs: dict[EntitlementLabel, tuple[EntitlementLabel, ...]]
+    included_only: bool
+    payg_fallback_allowed: bool
+    evidence_refs: tuple[Annotated[str, Field(strict=True)], ...] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _literal_policy(cls, value: Any) -> Any:
+        if isinstance(value, dict) and (
+            ("included_only" in value and value["included_only"] is not True)
+            or ("payg_fallback_allowed" in value and value["payg_fallback_allowed"] is not False)
+        ):
+            raise ValueError(
+                "entitlement policy must be included-only; next action: supply disabled PAYG evidence"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _metadata_contract(self, info: ValidationInfo) -> Self:
+        now = (info.context or {}).get("now", datetime.now(UTC))
+        times = [self.observed_at, self.fresh_until, now]
+        if self.credit_expires_at is not None:
+            times.append(self.credit_expires_at)
+        if any(t.utcoffset() is None for t in times):
+            raise ValueError("entitlement times must be aware; next action: retain source timezone")
+        if self.observed_at > now or self.fresh_until <= self.observed_at:
+            raise ValueError(
+                "entitlement clock invalid; next action: obtain fresh account metadata"
+            )
+        _reject_private_or_identity_refs(list(self.evidence_refs), "entitlement")
+        if any(not is_syntactically_typed_policy_evidence_reference(r) for r in self.evidence_refs):
+            raise ValueError(
+                "entitlement evidence must be typed; next action: supply source references"
+            )
+        return self
+
+class DeltaResolution(StrictReceiptModel):
+    """Evidence only; independent verification is a Python dependency, never a JSON flag."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    delta_id: str = Field(strict=True, min_length=1)
+    surface_id: str = Field(strict=True, min_length=1)
+    descriptor_signature: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    configuration_digest: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    route_id: str = Field(strict=True, min_length=1)
+    disposition: Literal["admitted"]
+    admission_refs: tuple[Annotated[str, Field(strict=True)], ...] = Field(min_length=1)
+    observed_at: AwareDatetime
+    fresh_until: AwareDatetime
+    revoked: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def _resolution_contract(self) -> Self:
+        if (
+            self.fresh_until <= self.observed_at
+            or any(
+                not value.strip() or value != value.strip()
+                for value in (self.delta_id, self.surface_id, self.route_id)
+            )
+            or any(
+                not is_syntactically_typed_policy_evidence_reference(r) for r in self.admission_refs
+            )
+        ):
+            raise ValueError(
+                "invalid resolution; next action: supply typed refs, identities and ordered times"
+            )
+        return self
+
+    def is_current(self, now: datetime) -> bool:
+        return not self.revoked and self.observed_at <= now < self.fresh_until
+
+
 class PlatformCapabilityReceipt(StrictReceiptModel):
     receipt_schema: Literal[1] = RECEIPT_SCHEMA_VERSION
     receipt_id: str
@@ -175,6 +275,8 @@ class PlatformCapabilityReceipt(StrictReceiptModel):
     quota: SurfaceEvidence
     provider_docs: ProviderDocsEvidence
     known_unknowns: list[str] = Field(default_factory=list)
+    entitlement_metadata: EntitlementMetadata | None = None
+    delta_resolution: DeltaResolution | None = None
 
     @model_validator(mode="after")
     def _duration_is_valid(self) -> Self:
@@ -254,6 +356,9 @@ def load_platform_capability_receipts(
 
 
 _PYDANTIC_DYNAMIC_ENTRYPOINTS = (
+    DeltaResolution._resolution_contract,
+    EntitlementMetadata._literal_policy,
+    EntitlementMetadata._metadata_contract,
     SurfaceEvidence._evidence_or_reason,
     ProviderDocsEvidence._duration_is_valid,
     PlatformCapabilityReceipt._duration_is_valid,
