@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.coord_event_log import (
+from hapax.spine.coord_event_log import (
     DEFAULT_JSONL_MIRROR,
     DEFAULT_LEDGER_DB,
     DEFAULT_SPOOL_DIR,
@@ -18,7 +18,7 @@ from shared.coord_event_log import (
     Snapshot,
     snapshot_id_for,
 )
-from shared.coord_projection import CoordProjection
+from hapax.spine.coord_projection import CoordProjection
 
 
 def _event(event_id: str = "evt-1") -> CoordEvent:
@@ -68,7 +68,7 @@ def test_default_paths_are_a_user_writable_coord_ledger_outside_worktrees() -> N
 
 
 def test_coord_base_dir_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from shared.coord_event_log import coord_base_dir, default_grant_dir, default_grant_key
+    from hapax.spine.coord_event_log import coord_base_dir, default_grant_dir, default_grant_key
 
     for var in ("HAPAX_COORD_DIR", "HAPAX_COORD_GRANT_DIR", "HAPAX_COORD_GRANT_KEY"):
         monkeypatch.delenv(var, raising=False)
@@ -100,7 +100,7 @@ def test_coord_base_dir_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 def test_provision_coord_tree_creates_writable_tree_and_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from shared.coord_event_log import default_event_log, provision_coord_tree
+    from hapax.spine.coord_event_log import default_event_log, provision_coord_tree
 
     base = tmp_path / "coord"
     monkeypatch.setenv("HAPAX_COORD_DIR", str(base))
@@ -130,7 +130,7 @@ def test_provision_coord_tree_creates_writable_tree_and_key(
 
 
 def test_provision_coord_tree_fails_loud_when_unwritable(tmp_path: Path) -> None:
-    from shared.coord_event_log import CoordEventLogError, provision_coord_tree
+    from hapax.spine.coord_event_log import CoordEventLogError, provision_coord_tree
 
     # A regular file standing where the base dir must go: mkdir raises, and the
     # provisioner must surface it LOUDLY rather than silently degrade.
@@ -429,3 +429,63 @@ def test_replay_projection_without_a_snapshot_matches_full_replay(tmp_path: Path
     from_driver = log.replay_projection(CoordProjection, from_snapshot=True)  # no snapshot yet
 
     assert _canon(from_driver.to_record()) == _canon(from_zero.to_record())
+
+
+@pytest.mark.parametrize(
+    "limit,before", [(7, None), (7, 1020), (7, 41), (7, 1), (0, None), (-1, None), (2048, None)]
+)
+@pytest.mark.parametrize("mirror", [False, True])
+def test_read_tail_bounded_window(tmp_path, monkeypatch, limit, before, mirror):
+    log = _log(tmp_path)
+    for i in range(1024):
+        log.append(_event(f"tail-{i}"), writer=CoordWriter.daemon())
+    expected = tuple(e for e in log.replay().events if before is None or e.sequence < before)
+    expected = expected[-limit:] if limit > 0 else ()
+    if mirror:
+        log.db_path = tmp_path / "broken.db"
+        log.db_path.write_bytes(b"broken sqlite")
+        with log.jsonl_path.open("a") as stream:
+            stream.write("not json\n")
+    parse, calls = CoordEvent.from_record, []
+
+    def counted(record):
+        calls.append(record)
+        return parse(record)
+
+    monkeypatch.setattr(CoordEvent, "from_record", counted)
+    result = log.read_tail(limit=limit, before_sequence=before, fail_open=mirror)
+    assert result.events == expected
+    if mirror and limit > 0:
+        assert result.degraded and result.source == "jsonl_mirror"
+        assert "sqlite_replay_failed" in result.errors[0]
+        assert "line 1025" in result.errors[1]
+    else:
+        assert not result.degraded and result.source == "sqlite"
+        assert len(calls) == len(expected)
+
+
+def test_read_tail_empty(tmp_path):
+    log = _log(tmp_path)
+    assert log.read_tail(limit=7).events == ()
+    assert not log.db_path.exists()
+
+
+@pytest.mark.parametrize("fail_open", [False, True])
+def test_read_tail_errors(tmp_path, fail_open):
+    from hapax.spine.coord_event_log import CoordEventLogError
+
+    log = _log(tmp_path)
+    log.append(_event(), writer=CoordWriter.daemon())
+    expected = log.replay().events
+    assert log.read_tail(limit=1).events == expected
+    log.db_path = tmp_path / "broken.db"
+    log.db_path.write_bytes(b"broken sqlite")
+    if not fail_open:
+        with pytest.raises(CoordEventLogError, match="inspect ledger"):
+            log.read_tail(limit=1)
+    else:
+        assert log.read_tail(limit=1, fail_open=True).events == expected
+        log.jsonl_path.unlink()
+        result = log.read_tail(limit=1, fail_open=True)
+        assert result.events == () and result.degraded and result.source == "jsonl_mirror"
+        assert "jsonl_mirror_unavailable:FileNotFoundError" in result.errors[1]

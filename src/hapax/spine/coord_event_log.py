@@ -17,6 +17,7 @@ import re
 import sqlite3
 import sys
 import uuid
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -431,6 +432,59 @@ class CoordEventLog:
                 degraded=True,
                 errors=(error, *mirror_errors),
             )
+
+    def read_tail(
+        self, *, limit: int, before_sequence: int | None = None, fail_open: bool = False
+    ) -> ReplayResult:
+        """Newest window, ascending, strictly before the cursor. Nonpositive limits are empty.
+
+        Mirror fallback streams append order, retaining only the last ``limit`` events.
+        """
+        if limit <= 0 or not self.db_path.exists():
+            return ReplayResult(events=(), source="sqlite")
+        try:
+            where = "" if before_sequence is None else "WHERE sequence < ? "
+            args = (limit,) if before_sequence is None else (before_sequence, limit)
+            events: list[CoordEvent] | deque[CoordEvent] = []
+            with sqlite3.connect(self.db_path) as conn:
+                for sequence, raw in conn.execute(
+                    "SELECT sequence, canonical_json FROM coord_events "
+                    + where
+                    + "ORDER BY sequence DESC LIMIT ?",
+                    args,
+                ):
+                    record = json.loads(str(raw))
+                    record.setdefault("sequence", sequence)
+                    events.append(CoordEvent.from_record(record))
+            return ReplayResult(events=tuple(reversed(events)), source="sqlite")
+        except Exception as exc:
+            if not fail_open:
+                raise CoordEventLogError(
+                    f"coord tail failed: {exc}; inspect ledger {self.db_path}"
+                ) from exc
+            errors = [f"sqlite_replay_failed:{type(exc).__name__}:{exc}"]
+        events = deque(maxlen=limit)
+        try:
+            with self.jsonl_path.open(encoding="utf-8") as stream:
+                for lineno, line in enumerate(stream, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        event = CoordEvent.from_record(json.loads(line))
+                    except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
+                        errors.append(
+                            f"{self.jsonl_path}: line {lineno}: {type(exc).__name__}: {exc}"
+                        )
+                        continue
+                    if before_sequence is None or (
+                        event.sequence is not None and event.sequence < before_sequence
+                    ):
+                        events.append(event)
+        except OSError as exc:
+            errors.append(f"jsonl_mirror_unavailable:{type(exc).__name__}:{exc}")
+        return ReplayResult(
+            events=tuple(events), source="jsonl_mirror", degraded=True, errors=tuple(errors)
+        )
 
     def ingest_spool(self) -> SpoolIngestResult:
         """Drain fail-open spool intents into the canonical log (daemon boot path).
