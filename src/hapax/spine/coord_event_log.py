@@ -459,7 +459,9 @@ class CoordEventLog:
             return ReplayResult(events=tuple(reversed(events)), source="sqlite")
         except Exception as exc:
             if not fail_open:
-                raise CoordEventLogError(f"coord tail failed: {exc}") from exc
+                raise CoordEventLogError(
+                    f"coord tail failed: {exc}; inspect ledger {self.db_path}"
+                ) from exc
             errors = [f"sqlite_replay_failed:{type(exc).__name__}:{exc}"]
         events = deque(maxlen=limit)
         try:

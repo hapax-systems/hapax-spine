@@ -468,3 +468,24 @@ def test_read_tail_empty(tmp_path):
     log = _log(tmp_path)
     assert log.read_tail(limit=7).events == ()
     assert not log.db_path.exists()
+
+
+@pytest.mark.parametrize("fail_open", [False, True])
+def test_read_tail_errors(tmp_path, fail_open):
+    from hapax.spine.coord_event_log import CoordEventLogError
+
+    log = _log(tmp_path)
+    log.append(_event(), writer=CoordWriter.daemon())
+    expected = log.replay().events
+    assert log.read_tail(limit=1).events == expected
+    log.db_path = tmp_path / "broken.db"
+    log.db_path.write_bytes(b"broken sqlite")
+    if not fail_open:
+        with pytest.raises(CoordEventLogError, match="inspect ledger"):
+            log.read_tail(limit=1)
+    else:
+        assert log.read_tail(limit=1, fail_open=True).events == expected
+        log.jsonl_path.unlink()
+        result = log.read_tail(limit=1, fail_open=True)
+        assert result.events == () and result.degraded and result.source == "jsonl_mirror"
+        assert "jsonl_mirror_unavailable:FileNotFoundError" in result.errors[1]
