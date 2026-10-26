@@ -2122,9 +2122,13 @@ def _require_unique(label: str, values: list[str]) -> None:
 
 def _reject_private_or_identity_refs(refs: list[str], label: str) -> None:
     if any(ref.startswith(("/", "~")) for ref in refs):
-        raise ValueError(f"{label} refs must stay repo-relative or symbolic")
+        raise ValueError(
+            f"{label} refs must stay repo-relative or symbolic; next action: supply a repo-relative or symbolic reference that carries no identity"
+        )
     if any("@" in ref for ref in refs):
-        raise ValueError(f"{label} refs must not contain raw email addresses")
+        raise ValueError(
+            f"{label} refs must not contain raw email addresses; next action: supply a repo-relative or symbolic reference that carries no identity"
+        )
 
 
 def _refs(*values: str | None) -> list[str]:
