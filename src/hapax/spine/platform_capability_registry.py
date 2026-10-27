@@ -84,6 +84,7 @@ REQUIRED_ROUTE_IDS = frozenset(
         "codex.headless.spark",
         "agy.review.direct",
         "glmcp.review.direct",
+        "local_tool.local.gemma3_4b_reviewbench",
         "local_tool.local.worker",
         "vibe.headless.full",
     }
@@ -1512,6 +1513,50 @@ class PlatformCapabilityRoute(StrictModel):
             raise ValueError(
                 "auto-approval posture cannot be unrestricted authoritative"
             )
+
+        if (
+            self.route_id in REQUIRED_ROUTE_IDS
+            and self.route_id == "local_tool.local.gemma3_4b_reviewbench"
+        ):
+            qe, ta = self.quality_envelope, self.tool_access
+            exc = (
+                "frontier_required,frontier_review_required,governance_authority_case,"
+                "source_mutation,runtime_mutation,provider_spend,privacy_secret_sensitive,"
+                "public_release_without_gate"
+            )
+            for ok, msg in (
+                (
+                    qe.allowed_task_classes == ["reviewbench_phase5_op2_bin"],
+                    "enforce allowed_task_classes=['reviewbench_phase5_op2_bin']; Next action: restore allowed_task_classes.",
+                ),
+                (
+                    ",".join(qe.excluded_task_classes) == exc,
+                    "keep the 8 excluded_task_classes; Next action: restore excluded_task_classes.",
+                ),
+                (
+                    self.authority_ceiling is AuthorityCeiling.SUPPORT_ONLY,
+                    "keep authority_ceiling=support_only; Next action: set authority_ceiling to 'support_only'.",
+                ),
+                (
+                    qe.eligible_quality_floors == [QualityFloor.DETERMINISTIC_OK],
+                    "keep eligible_quality_floors=['deterministic_ok']; Next action: restore eligible_quality_floors.",
+                ),
+                (
+                    not self.mutability.any_mutation(),
+                    "not enable any mutation surface; Next action: set all mutability flags to false.",
+                ),
+                (
+                    (ta.filesystem, ta.shell, ta.browser, ta.mcp)
+                    == (FilesystemAccess.READ_ONLY, ShellAccess.NONE, False, []),
+                    "keep read_only/none/false/[] tool_access; Next action: restore read-only tool_access.",
+                ),
+                (
+                    self.capacity_pool is CapacityPool.LOCAL_COMPUTE,
+                    "keep capacity_pool=local_compute; Next action: set capacity_pool to 'local_compute'.",
+                ),
+            ):
+                if not ok:
+                    raise ValueError(f"local_tool.local.gemma3_4b_reviewbench must {msg}")
 
         if (
             self.mutability.source

@@ -262,7 +262,7 @@ def test_config_binding_and_explicit_paths_win_without_reading_host(monkeypatch,
     monkeypatch.setenv('HAPAX_PLATFORM_CAPABILITY_RECEIPT_DIR',str(tmp_path/'env-receipts'))
     monkeypatch.delenv('HAPAX_SPINE_CONFIG_DIR')
     result = r.load_platform_capability_registry(explicit, receipt_dir=tmp_path/'explicit-receipts', now=NOW)
-    assert len(result.routes) == 16 and calls == [tmp_path/'explicit-receipts']
+    assert len(result.routes) == 17 and calls == [tmp_path/'explicit-receipts']
     with pytest.raises(RuntimeError, match='HAPAX_SPINE_CONFIG_DIR'):
         r.load_platform_capability_registry()
     cfg = tmp_path/'config'; cfg.mkdir(); (cfg/'platform-capability-registry.json').write_text(explicit.read_text())
