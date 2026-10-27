@@ -3879,12 +3879,12 @@
       "platform": "local_tool",
       "mode": "local",
       "profile": "gemma3_4b_reviewbench",
-      "launcher": "receipt-only local-inference route; LiteLLM :4000 local alias to TabbyAPI :5000 (Command-R 35B EXL3); no spawnable lane",
-      "summary": "Gemma3 4B ReviewBench local_tool route.",
-      "notes": "Sanitized fixture route for S03 parity.",
+      "launcher": "receipt-only local-inference benchmark subject route; Ollama 127.0.0.1:11434 (gemma3:4b); no spawnable mutating lane",
+      "sanctioned_wrapper": "scripts/hapax-methodology-dispatch",
+      "summary": "Local Gemma 3 4B Ollama ReviewBench benchmark subject route (OP2-BIN)",
+      "notes": "Admitted strictly as a support_only, non-mutating, zero-spend local Ollama benchmark subject route for REVIEWBENCH-EPISTEMIC-v1 Phase 5 OP2-BIN evaluation. Excluded from all production, frontier, review, and mutation task classes.",
       "route_state": "blocked",
       "blocked_reasons": [
-        "local_inference_worker_receipt_admission_required",
         "fresh_capability_evidence_absent",
         "quota_telemetry_unknown"
       ],
@@ -3894,19 +3894,11 @@
         "effort": "none",
         "context_mode": "standard",
         "fast_mode": "off",
-        "quantization": "exl3_4_0bpw"
+        "quantization": "none"
       },
-      "descriptor_variants": [
-        {
-          "variant_id": "worker@quantization_exl3_5_0bpw",
-          "knobs_override": {
-            "quantization": "exl3_5_0bpw"
-          },
-          "score_delta": {},
-          "scores_inherited_from": "local_tool.local.worker",
-          "blocked_reasons": []
-        }
-      ],
+      "approval_posture": "default_deny_enable_latch",
+      "capability_tier": "read_only_support",
+      "worker_tier": "bounded_worker",
       "auth_surface": "local",
       "capacity_pool": "local_compute",
       "mutability": {
@@ -3929,6 +3921,9 @@
           "deterministic_ok"
         ],
         "explicit_equivalence_records": [],
+        "allowed_task_classes": [
+          "reviewbench_phase5_op2_bin"
+        ],
         "excluded_task_classes": [
           "frontier_required",
           "frontier_review_required",
@@ -3938,185 +3933,133 @@
           "provider_spend",
           "privacy_secret_sensitive",
           "public_release_without_gate"
-        ],
-        "allowed_task_classes": [
-          "reviewbench_phase5_op2_bin"
         ]
       },
-      "context_limits": {
-        "max_context_class": "medium"
-      },
-      "telemetry": {
-        "quota_source": "none",
-        "cost_source": "none",
-        "resource_source": "local_probe"
-      },
-      "freshness": {
-        "capability_checked_at": null,
-        "capability_stale_after": "24h",
-        "quota_checked_at": null,
-        "quota_stale_after": "15m",
-        "resource_checked_at": "2026-06-19T00:00:00Z",
-        "resource_stale_after": "24h",
-        "provider_docs_checked_at": "2026-06-19T00:00:00Z",
-        "provider_docs_stale_after": "30d",
-        "evidence": {
-          "capability": {
-            "evidence_refs": [],
-            "blocked_reasons": [
-              "fresh_capability_evidence_absent"
-            ]
-          },
-          "quota": {
-            "evidence_refs": [],
-            "blocked_reasons": [
-              "quota_telemetry_unknown"
-            ]
-          },
-          "resource": {
-            "evidence_refs": [
-              "local:tabbyapi:127.0.0.1:5000:command-r-35b-exl3-resident:2026-06-19T00:00Z"
-            ],
-            "blocked_reasons": []
-          },
-          "provider_docs": {
-            "evidence_refs": [
-              "local:CLAUDE.md:local-command-r-35b-exl3-tabbyapi-5000"
-            ],
-            "blocked_reasons": []
-          }
-        }
-      },
-      "known_unknowns": [
-        "Local-inference capability scores are seed estimates anchored to the Sonnet worker baseline adjusted for a local Command-R 35B.",
-        "No local GPU quota/utilization telemetry source is wired; quota stays unknown until a local_probe-class QuotaSource lands.",
-        "Command-R 35B EXL3 context window at 24GB/32GB is unverified; max_context_class=medium is conservative."
-      ],
       "capability_scores": {
         "grounding": {
           "score": 3,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:grounding"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "governance_reasoning": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:governance_reasoning"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "source_editing": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:source_editing"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "architecture": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:architecture"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "ambiguity_resolution": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:ambiguity_resolution"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "long_context": {
           "score": 3,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:long_context"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "current_docs_grounding": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:current_docs_grounding"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "multimodal_verification": {
           "score": 0,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:multimodal_verification"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "runtime_debugging": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:runtime_debugging"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "test_authoring": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:test_authoring"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "coordination_reliability": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:coordination_reliability"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "privacy_safety": {
           "score": 5,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:privacy_safety"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "public_claim_safety": {
           "score": 2,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:public_claim_safety"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         },
         "local_calibration": {
           "score": 4,
           "confidence": 1,
           "evidence_refs": [
-            "fixture:gemma:local_calibration"
+            "fixture:gemma:d01-benchmark-subject"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h"
         }
       },
@@ -4127,15 +4070,63 @@
           "authority_use": [
             "read"
           ],
-          "observed_at": "2026-06-19T00:00:00Z",
+          "observed_at": "2026-10-23T01:15:01Z",
           "stale_after": "24h",
-          "evidence_ref": "platform-capability-registry:local_tool.local.worker:tool_access.filesystem"
+          "evidence_ref": "platform-capability-registry:local_tool.local.gemma3_4b_reviewbench:tool_access.filesystem"
         }
       ],
-      "sanctioned_wrapper": "scripts/hapax-methodology-dispatch",
-      "approval_posture": "default_deny_enable_latch",
-      "capability_tier": "jr_plus",
-      "worker_tier": "bounded_worker"
+      "context_limits": {
+        "max_context_class": "medium"
+      },
+      "telemetry": {
+        "quota_source": "manual",
+        "cost_source": "none",
+        "resource_source": "local_probe"
+      },
+      "freshness": {
+        "capability_checked_at": "2026-10-23T01:15:01Z",
+        "capability_stale_after": "24h",
+        "quota_checked_at": "2026-10-23T01:15:01Z",
+        "quota_stale_after": "24h",
+        "resource_checked_at": "2026-10-23T01:15:01Z",
+        "resource_stale_after": "24h",
+        "provider_docs_checked_at": "2026-10-23T01:15:24Z",
+        "provider_docs_stale_after": "30d",
+        "evidence": {
+          "capability": {
+            "evidence_refs": [
+              "fixture:ollama:127.0.0.1:11434:gemma3-4b:sha256:a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a"
+            ],
+            "blocked_reasons": [
+              "fresh_capability_evidence_absent"
+            ]
+          },
+          "quota": {
+            "evidence_refs": [
+              "fixture:ollama:vram-and-zero-payg-2026-10-23T01:15:01Z"
+            ],
+            "blocked_reasons": [
+              "quota_telemetry_unknown"
+            ]
+          },
+          "resource": {
+            "evidence_refs": [
+              "fixture:ollama:127.0.0.1:11434:gemma3-4b:smoke-generate-ok-2026-10-23T01:15:01Z"
+            ],
+            "blocked_reasons": []
+          },
+          "provider_docs": {
+            "evidence_refs": [
+              "https://ollama.com/library/gemma3:4b (read 2026-10-23T01:15:24Z; sha256:72a16695accf32314bbaa7c9ba2c3ddb649a10ea5ddfa7604540969f50bd196f)"
+            ],
+            "blocked_reasons": []
+          }
+        }
+      },
+      "known_unknowns": [
+        "Admitted strictly for non-mutating ReviewBench Phase 5 OP2-BIN local single-VRAM proxy evaluation under D-01.",
+        "local_compute.ornith_fugu_sakana_surface remains intake_required in omitted_capability_shapes pending governed supply leaf and resource receipt."
+      ]
     }
   ]
 }

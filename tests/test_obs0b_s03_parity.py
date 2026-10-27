@@ -195,7 +195,8 @@ def test_pool_route_binding_must_match(change):
     (lambda r: r.update(authority_ceiling="frontier_review_required"), "authority_ceiling=support_only"),
     (lambda r: r["quality_envelope"].update(eligible_quality_floors=["deterministic_ok", "frontier_review_required"]), "eligible_quality_floors"),
     (lambda r: r["mutability"].update(source=True), "not enable any mutation surface"),
-    (lambda r: r["tool_access"].update(filesystem="read_write"), "keep read_only/none/false"),
+    *((lambda r, k=k, v=v: r["tool_access"].update({k: v}), "keep read_only/none/false")
+      for k, v in (("filesystem", "read_write"), ("shell", "read_only"), ("browser", True), ("mcp", ["git"]))),
     (lambda r: r.update(capacity_pool="subscription_quota"), "keep capacity_pool=local_compute"),
 ])
 def test_gemma3_4b_reviewbench_posture_refusals(fn, pat):
@@ -445,6 +446,14 @@ def _mutations():
     controls.append(("frozen-resolved-pool", source.replace('@dataclass(frozen=True)\nclass ResolvedSubscriptionPool',
                                                         '@dataclass\nclass ResolvedSubscriptionPool').encode()))
     controls.append(("gemma-capacity-pool-posture", source.replace("self.capacity_pool is CapacityPool.LOCAL_COMPUTE", "True").encode()))
+    ta_rhs = "(FilesystemAccess.READ_ONLY, ShellAccess.NONE, False, [])"
+    for lbl, bad_rhs in (
+        ("gemma-ta-filesystem", "(ta.filesystem, ShellAccess.NONE, False, [])"),
+        ("gemma-ta-shell", "(FilesystemAccess.READ_ONLY, ta.shell, False, [])"),
+        ("gemma-ta-browser", "(FilesystemAccess.READ_ONLY, ShellAccess.NONE, ta.browser, [])"),
+        ("gemma-ta-mcp", "(FilesystemAccess.READ_ONLY, ShellAccess.NONE, False, ta.mcp)"),
+    ):
+        controls.append((lbl, source.replace(ta_rhs, bad_rhs, 1).encode()))
     def run(label):
         env = os.environ.copy(); env.pop("PYTHONPATH", None)
         with tempfile.TemporaryDirectory(prefix="s03-cache-") as cache:
