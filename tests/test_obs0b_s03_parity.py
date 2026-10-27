@@ -17,8 +17,8 @@ from pydantic import ValidationError
 from hapax.spine import platform_capability_registry as registry
 from test_obs0b_s02b_parity import TRUST
 
-REGISTRY_SHA = "7d7518c484b90dbb16728993a4c9b5a69b0ad402bb541d254c447470f16d73ca"
-SOURCE_SHA = "bcb3065e0802bc3a294571f01d745d5e1f11ed15f6905442aa5df9d2c9365bb0"
+REGISTRY_SHA = "8dd944b2b7101f0834e5a73537e701c17446f670c4becb2929688a555e3e82cc"
+SOURCE_SHA = "78eb2c5c2a5467058cf95883ed464ca36b98e37ddc218f6b444addf52925ef4c"
 
 LOAD = json.loads(r'''
 {
@@ -64,13 +64,14 @@ POOL = json.loads(r'''
 }
 ''')
 
-CURRENT_IDS = ['api.headless.api_frontier', 'api.headless.openrouter', 'api.headless.provider_gateway', 'claude.headless.full', 'claude.headless.haiku', 'claude.headless.opus', 'claude.headless.sonnet', 'claude.review.opus', 'claude.interactive.full', 'kimi.interactive.lane', 'codex.headless.full', 'codex.headless.spark', 'agy.review.direct', 'glmcp.review.direct', 'local_tool.local.worker', 'vibe.headless.full']
+CURRENT_IDS = ['api.headless.api_frontier', 'api.headless.openrouter', 'api.headless.provider_gateway', 'claude.headless.full', 'claude.headless.haiku', 'claude.headless.opus', 'claude.headless.sonnet', 'claude.review.opus', 'claude.interactive.full', 'kimi.interactive.lane', 'codex.headless.full', 'codex.headless.spark', 'agy.review.direct', 'glmcp.review.direct', 'local_tool.local.gemma3_4b_reviewbench', 'local_tool.local.worker', 'vibe.headless.full']
 
 
 def route(route_id="claude.headless.full", **changes):
     """Synthetic route variants on an otherwise valid, existing test substrate."""
     fixture = json.loads((Path(__file__).parent / "fixtures/platform-capability-registry.json").read_text())
-    value = copy.deepcopy(next(r for r in fixture["routes"] if r["route_id"] == "claude.headless.full"))
+    base_id = route_id if route_id == "local_tool.local.gemma3_4b_reviewbench" else "claude.headless.full"
+    value = copy.deepcopy(next(r for r in fixture["routes"] if r["route_id"] == base_id))
     platform, mode, profile = route_id.split(".")
     value.update(route_id=route_id, platform=platform, mode=mode, profile=profile)
     value.update(changes)
@@ -186,6 +187,23 @@ def test_pool_route_binding_must_match(change):
         value["native_load_set"]["home_env" if change == "home-env" else "native_home"] = "mismatch"
     with pytest.raises(ValidationError, match="subscription_pool_binding|pool-bound route"):
         registry.PlatformCapabilityRoute.model_validate(value)
+
+
+@pytest.mark.parametrize("fn,pat", [
+    (lambda r: r["quality_envelope"].pop("allowed_task_classes"), "allowed_task_classes"),
+    (lambda r: r["quality_envelope"]["excluded_task_classes"].pop(), "8 excluded_task_classes"),
+    (lambda r: r.update(authority_ceiling="frontier_review_required"), "authority_ceiling=support_only"),
+    (lambda r: r["quality_envelope"].update(eligible_quality_floors=["deterministic_ok", "frontier_review_required"]), "eligible_quality_floors"),
+    (lambda r: r["mutability"].update(source=True), "not enable any mutation surface"),
+    (lambda r: r["tool_access"].update(filesystem="read_write"), "keep read_only/none/false"),
+    (lambda r: r.update(capacity_pool="subscription_quota"), "keep capacity_pool=local_compute"),
+])
+def test_gemma3_4b_reviewbench_posture_refusals(fn, pat):
+    v = route("local_tool.local.gemma3_4b_reviewbench")
+    registry.PlatformCapabilityRoute.model_validate(v)
+    fn(v)
+    with pytest.raises(ValidationError, match=pat):
+        registry.PlatformCapabilityRoute.model_validate(v)
 
 
 def test_root_routes_and_persistent_evidence_shape():
@@ -332,8 +350,6 @@ def _parity(filename):
     assert set(expected) == set(actual) == ALLOCATION
     name = "PlatformCapabilityRegistry"
     assert actual[name].count(READ_VALIDATION) == 1
-    actual[name] = actual[name].replace(READ_VALIDATION,
-        '(PlatformCapabilityRoute.model_validate(route.model_dump(mode="python")) for route in self.routes)')
     # Preserve pre-existing statement formatting rather than spend patch budget on it.
     assert all(ast.dump(ast.parse(actual[k])) == ast.dump(ast.parse(expected[k])) for k in ALLOCATION)
     print(json.dumps({"ast_equal_after_authorized_read_repair": len(actual),
@@ -352,7 +368,7 @@ def _current_registry(filename):
     with patch.dict(os.environ, {registry.PLATFORM_CAPABILITY_RECEIPT_DIR_ENV: "none"}):
         parsed = registry.load_platform_capability_registry(Path(filename))
     assert set(parsed.route_map()) == set(CURRENT_IDS)
-    assert len(parsed.routes) == 16 and len(parsed.omitted_capability_shapes) == 13
+    assert len(parsed.routes) == 17 and len(parsed.omitted_capability_shapes) == 13
     assert all(not x.demand_eligible and not x.route_ids for x in parsed.omitted_capability_shapes)
     for before, after in zip(payload["routes"], parsed.routes, strict=True):
         assert (before["route_id"], before["route_state"], before["blocked_reasons"]) == (
@@ -428,6 +444,7 @@ def _mutations():
         '[PlatformCapabilityRoute.model_validate(r.model_dump(mode="python")) for r in self.routes]').encode()))
     controls.append(("frozen-resolved-pool", source.replace('@dataclass(frozen=True)\nclass ResolvedSubscriptionPool',
                                                         '@dataclass\nclass ResolvedSubscriptionPool').encode()))
+    controls.append(("gemma-capacity-pool-posture", source.replace("self.capacity_pool is CapacityPool.LOCAL_COMPUTE", "True").encode()))
     def run(label):
         env = os.environ.copy(); env.pop("PYTHONPATH", None)
         with tempfile.TemporaryDirectory(prefix="s03-cache-") as cache:
