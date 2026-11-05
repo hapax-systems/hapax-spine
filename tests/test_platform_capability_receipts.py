@@ -570,13 +570,13 @@ def test_runtime_actuation_receipt_allows_task_bound_runtime_dispatch(
         receipt_id="minio-cleanup-runtime-test",
         route_id="codex.headless.full",
         receipt_type="runtime_actuation",
-        task_ids=["appendix-podium-minio-old-root-cleanup-20260605"],
+        task_ids=["node-alpha-node-beta-minio-old-root-cleanup-20260605"],
         mutation_surfaces=["runtime"],
     )
 
     sources = load_dispatch_policy_sources(registry_path=REGISTRY, receipt_dir=tmp_path)
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     )
     decision = evaluate_dispatch_policy(request)
 
@@ -605,7 +605,7 @@ def test_runtime_actuation_receipt_wrong_task_fails_closed(tmp_path: Path) -> No
 
     sources = load_dispatch_policy_sources(registry_path=REGISTRY, receipt_dir=tmp_path)
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     )
     decision = evaluate_dispatch_policy(request)
 
@@ -624,13 +624,13 @@ def test_runtime_actuation_receipt_wrong_route_fails_closed(tmp_path: Path) -> N
         receipt_id="wrong-route-runtime-test",
         route_id="claude.headless.full",
         receipt_type="runtime_actuation",
-        task_ids=["appendix-podium-minio-old-root-cleanup-20260605"],
+        task_ids=["node-alpha-node-beta-minio-old-root-cleanup-20260605"],
         mutation_surfaces=["runtime"],
     )
 
     sources = load_dispatch_policy_sources(registry_path=REGISTRY, receipt_dir=tmp_path)
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     )
     decision = evaluate_dispatch_policy(request)
 
@@ -649,13 +649,13 @@ def test_runtime_actuation_receipt_wrong_surface_fails_closed(tmp_path: Path) ->
         receipt_id="wrong-surface-runtime-test",
         route_id="codex.headless.full",
         receipt_type="runtime_actuation",
-        task_ids=["appendix-podium-minio-old-root-cleanup-20260605"],
+        task_ids=["node-alpha-node-beta-minio-old-root-cleanup-20260605"],
         mutation_surfaces=["source"],
     )
 
     sources = load_dispatch_policy_sources(registry_path=REGISTRY, receipt_dir=tmp_path)
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     )
     decision = evaluate_dispatch_policy(request)
 
@@ -674,7 +674,7 @@ def test_runtime_actuation_receipt_stale_fails_closed_as_absent(tmp_path: Path) 
         receipt_id="stale-runtime-test",
         route_id="codex.headless.full",
         receipt_type="runtime_actuation",
-        task_ids=["appendix-podium-minio-old-root-cleanup-20260605"],
+        task_ids=["node-alpha-node-beta-minio-old-root-cleanup-20260605"],
         mutation_surfaces=["runtime"],
         issued_at="2026-01-01T00:00:00Z",
         stale_after="1h",
@@ -682,7 +682,7 @@ def test_runtime_actuation_receipt_stale_fails_closed_as_absent(tmp_path: Path) 
 
     sources = load_dispatch_policy_sources(registry_path=REGISTRY, receipt_dir=tmp_path)
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     )
     decision = evaluate_dispatch_policy(request)
 
@@ -707,7 +707,7 @@ def test_runtime_actuation_receipt_stale_on_request_fails_closed(tmp_path: Path)
         "signed_by": "operator",
         "evidence_refs": ["test:manually-stale-runtime-test"],
         "quality_floors": [],
-        "task_ids": ["appendix-podium-minio-old-root-cleanup-20260605"],
+        "task_ids": ["node-alpha-node-beta-minio-old-root-cleanup-20260605"],
         "mutation_surfaces": ["runtime"],
     }
     payload["signed_payload_sha256"] = route_authority_receipt_payload_hash(payload)
@@ -718,7 +718,7 @@ def test_runtime_actuation_receipt_stale_on_request_fails_closed(tmp_path: Path)
         now=datetime.fromisoformat("2026-06-05T11:00:00+00:00"),
     )
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     ).model_copy(update={"route_authority_receipts": (stale_receipt,)})
 
     decision = evaluate_dispatch_policy(
@@ -743,13 +743,13 @@ def test_runtime_actuation_receipt_allows_dimensional_runtime_candidate(
         receipt_id="minio-cleanup-runtime-dimensional-test",
         route_id="codex.headless.full",
         receipt_type="runtime_actuation",
-        task_ids=["appendix-podium-minio-old-root-cleanup-20260605"],
+        task_ids=["node-alpha-node-beta-minio-old-root-cleanup-20260605"],
         mutation_surfaces=["runtime"],
     )
 
     sources = load_dispatch_policy_sources(registry_path=REGISTRY, receipt_dir=tmp_path)
     request = _runtime_dispatch_request(
-        sources, task_id="appendix-podium-minio-old-root-cleanup-20260605"
+        sources, task_id="node-alpha-node-beta-minio-old-root-cleanup-20260605"
     )
     decision = evaluate_dispatch_policy(request, candidate_requests=(request,))
 

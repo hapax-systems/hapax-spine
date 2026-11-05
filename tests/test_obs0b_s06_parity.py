@@ -102,7 +102,7 @@ def test_partial_balance_proof_refuses(field):
     ({'provider_balance_covers_spend_before':NOW}, 'after it was observed'),
     ({'provider_balance_observed_at':NOW.replace(tzinfo=None)}, 'timezone-aware'),
     ({'provider_balance_covers_spend_before':NOW.replace(tzinfo=None)}, 'timezone-aware'),
-    ({'provider_balance_evidence_ref':'/home/person/balance.png'}, 'repo-relative'),
+    ({'provider_balance_evidence_ref':'/opt/example/balance.png'}, 'repo-relative'),
     ({'provider_balance_usd':'-1'}, 'greater than or equal'),
 ])
 def test_invalid_balance_proof_refuses(change,message):

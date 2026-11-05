@@ -1,4 +1,4 @@
-"""hapax-spine — the SDLC-runtime MECHANISM, extracted history-preserving from hapax-council.
+"""hapax-spine — the SDLC-runtime MECHANISM, runtime mechanism from Hapax Research Lab.
 
 The append-only coord event ledger, the projection engine, the capability registry + receipts,
 quota arithmetic, the dispatch-policy evaluator, the gate-event producer, and the EDT measurement

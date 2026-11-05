@@ -1,0 +1,15 @@
+# Gitleaks configuration for hapax-spine.
+title = "hapax-spine"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Standard repository metadata and virtual environment paths"
+paths = [
+  'LICENSE',
+  'CITATION\.cff',
+  '\.zenodo\.json',
+  '\.gitleaksignore',
+  '\.venv/',
+]

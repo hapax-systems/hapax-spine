@@ -605,7 +605,7 @@ def test_haiku_and_local_tool_routes_are_required_and_routable() -> None:
     assert local.execution_descriptor.model_id is ModelId.COMMAND_R_08_2024
     assert local.execution_descriptor.quantization.value == "exl3_4_0bpw"
 
-    # the podium 5.0bpw tier is a materialized descriptor leaf
+    # the node-beta 5.0bpw tier is a materialized descriptor leaf
     leaves = materialize_descriptor_leaves(registry)
     variant_leaf = leaves["local_tool.local.worker#worker@quantization_exl3_5_0bpw"]
     assert variant_leaf.quantization.value == "exl3_5_0bpw"

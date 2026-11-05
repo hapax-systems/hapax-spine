@@ -86,7 +86,7 @@ SUPPORT_CEILINGS = frozenset(
 NON_MUTATING_SURFACES = frozenset({"none"})
 CLOUD_BURST_ROUTE_IDS = frozenset({"api.headless.api_frontier"})
 LOCAL_DEV_PLATFORMS = frozenset({"agy", "claude", "codex", "vibe"})
-LOCAL_DEV_TARGET = "appendix"
+LOCAL_DEV_TARGET = "node-alpha"
 # GLMCP false-negative recovery is receipt-plane: create a fresh short-lived
 # supported-tool admission receipt and rerun quota telemetry. There is no
 # environment kill switch for stale/unknown subscription quota.
@@ -2502,7 +2502,7 @@ def _cloud_burst_policy_gate(request: DispatchRequest) -> tuple[DispatchAction, 
         return (
             DispatchAction.REFUSE,
             (
-                "cloud_burst_not_eligible_appendix_default",
+                "cloud_burst_not_eligible_local_default",
                 f"local_execution_target:{LOCAL_DEV_TARGET}",
             ),
         )
@@ -2549,7 +2549,7 @@ def _launch_reason_codes(
     if not _cloud_burst_eligible(request) and _is_local_dev_route(request):
         return (
             "policy_launch",
-            "cloud_burst_not_eligible_appendix_default",
+            "cloud_burst_not_eligible_local_default",
             f"local_execution_target:{LOCAL_DEV_TARGET}",
             *((runtime_authority_ref,) if runtime_authority_ref else ()),
         )
@@ -2603,7 +2603,7 @@ def _cloud_burst_receipt_fields(
         else:
             state = "eligible"
     elif _is_local_dev_route(request):
-        state = "excluded_local" if eligible else "appendix_default"
+        state = "excluded_local" if eligible else "local_default"
     else:
         state = "not_applicable"
 
@@ -2614,7 +2614,7 @@ def _cloud_burst_receipt_fields(
         "cloud_burst_spike_reasons": spike_reasons,
         "cloud_burst_guard_reasons": guard_reasons,
         "local_execution_target": LOCAL_DEV_TARGET
-        if state in {"appendix_default", "excluded_local", "ineligible"}
+        if state in {"local_default", "excluded_local", "ineligible"}
         else None,
     }
 

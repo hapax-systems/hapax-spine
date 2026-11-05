@@ -1358,16 +1358,16 @@ def test_spike_workload_refuses_local_fleet_and_points_to_cloud_burst() -> None:
     assert "cloud_burst_target:api.headless.api_frontier" in decision.reason_codes
     assert decision.cloud_burst_eligible is True
     assert decision.cloud_burst_guard_state == "excluded_local"
-    assert decision.local_execution_target == "appendix"
+    assert decision.local_execution_target == "node-alpha"
 
 
-def test_non_spike_workload_launch_receipt_records_appendix_default() -> None:
+def test_non_spike_workload_launch_receipt_records_local_default() -> None:
     decision = evaluate_dispatch_policy(_request(), now=NOW)
 
     assert decision.action is DispatchAction.LAUNCH
-    assert "cloud_burst_not_eligible_appendix_default" in decision.reason_codes
-    assert decision.cloud_burst_guard_state == "appendix_default"
-    assert decision.local_execution_target == "appendix"
+    assert "cloud_burst_not_eligible_local_default" in decision.reason_codes
+    assert decision.cloud_burst_guard_state == "local_default"
+    assert decision.local_execution_target == "node-alpha"
 
 
 def test_cloud_burst_route_requires_secret_public_read_and_budget_guards() -> None:
@@ -1403,7 +1403,7 @@ def test_cloud_burst_route_requires_secret_public_read_and_budget_guards() -> No
     assert decision.cloud_burst_guard_state == "blocked"
 
 
-def test_cloud_burst_route_ineligible_receipt_points_back_to_appendix() -> None:
+def test_cloud_burst_route_ineligible_receipt_points_back_to_local_target() -> None:
     request = _request(
         platform="api",
         profile="api_frontier",
@@ -1417,9 +1417,9 @@ def test_cloud_burst_route_ineligible_receipt_points_back_to_appendix() -> None:
     decision = evaluate_dispatch_policy(request, now=NOW)
 
     assert decision.action is DispatchAction.REFUSE
-    assert "cloud_burst_not_eligible_appendix_default" in decision.reason_codes
+    assert "cloud_burst_not_eligible_local_default" in decision.reason_codes
     assert decision.cloud_burst_guard_state == "ineligible"
-    assert decision.local_execution_target == "appendix"
+    assert decision.local_execution_target == "node-alpha"
 
 
 def test_cloud_burst_route_launches_only_after_all_guards_and_budget_match() -> None:
