@@ -2,15 +2,18 @@ cff-version: 1.2.0
 message: If you use this software in your research, please cite it as below.
 type: software
 title: hapax-spine
-abstract: 'SDLC-runtime mechanism package for Hapax/Reins: route projection, capability
-  receipts, quota arithmetic, and gate-event production.'
+version: 0.1.3
+abstract: Source-available runtime mechanism from Hapax Research Lab providing append-only
+  event ledgers, policy-backed routing, capability receipts, quota arithmetic, and projections.
 authors:
-- name: Hapax Systems
+- name: Hapax Research Lab
+  email: hrl-han@hapaxresearch.com
+  website: https://hapaxresearch.com
 repository-code: https://github.com/hapax-systems/hapax-spine
-url: https://github.com/hapax-systems/hapax-spine
+url: https://hapaxresearch.com
 license: BUSL-1.1
 keywords:
 - governance
 - sdlc
 - research-software
-- single-operator
+- capability-routing

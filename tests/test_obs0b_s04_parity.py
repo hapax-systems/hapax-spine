@@ -59,11 +59,11 @@ def payload(*, current=False):
 
 
 def bare(outcome="observed", **changes):
-    value = dict(receipt_id="synthetic-bare-host", host="podium", cli="claude",
-        shape_id="bare-host.podium.claude", outcome=outcome,
+    value = dict(receipt_id="synthetic-bare-host", host="node-beta", cli="claude",
+        shape_id="bare-host.node-beta.claude", outcome=outcome,
         observed_at=NOW if outcome == "observed" else None, stale_after="24h",
         evidence_refs=[] if outcome == "not_observable" else [
-            "local_probe:podium:command -v claude -> " + (
+            "local_probe:node-beta:command -v claude -> " + (
                 "/usr/bin/claude" if outcome == "observed" else "not-found")],
         blocked_reasons=[] if outcome == "observed" else ["probe_not_supply"])
     value.update(changes)
@@ -172,7 +172,7 @@ def test_bare_host_current_outcomes_preserve_evidence_only_identity(outcome):
     value = bare(outcome)
     parsed = receipts.BareHostCliProbeReceiptV1.model_validate(value)
     assert parsed.receipt_class == "BareHostCliProbeReceiptV1" and parsed.receipt_schema == 1
-    assert parsed.shape_id == "bare-host.podium.claude"
+    assert parsed.shape_id == "bare-host.node-beta.claude"
     assert parsed.demand_eligible is False
     assert parsed.observed_at == value["observed_at"]
     assert parsed.evidence_refs == value["evidence_refs"]
