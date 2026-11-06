@@ -1,19 +1,19 @@
 cff-version: 1.2.0
-message: If you use this software in your research, please cite it as below.
+message: If you cite this repository or its artifacts in research, please cite it
+  as below.
 type: software
 title: hapax-spine
-version: 0.1.3
-abstract: Source-available runtime mechanism from Hapax Research Lab providing append-only
-  event ledgers, policy-backed routing, capability receipts, quota arithmetic, and projections.
+abstract: 'Source-available runtime mechanism from Hapax Research Lab (BSL 1.1): append-only
+  event ledgers, policy-backed routing, receipts, quotas, EDT, projections. The mechanism
+  layer behind Reins; not a general-purpose lifecycle kernel.'
 authors:
 - name: Hapax Research Lab
   email: hrl-han@hapaxresearch.com
   website: https://hapaxresearch.com
 repository-code: https://github.com/hapax-systems/hapax-spine
-url: https://hapaxresearch.com
+url: https://github.com/hapax-systems/hapax-spine
 license: BUSL-1.1
 keywords:
 - governance
 - sdlc
 - research-software
-- capability-routing

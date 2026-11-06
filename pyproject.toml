@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "hapax-spine"
 version = "0.1.3"
-description = "The SDLC-runtime mechanism (coord ledger, dispatch-policy evaluator, capability registry + receipts, quota arithmetic, EDT measurement, gate-event producer) for the Hapax n-DLC automation system."
+description = "Source-available runtime mechanism (append-only event ledger, dispatch-policy evaluator, capability registry and receipts, quota arithmetic, EDT measurement, and projections) for Hapax Research Lab's governed agent-delivery system."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [{ name = "Hapax Research LLC" }]
-keywords = ["sdlc", "n-dlc", "agent-orchestration", "capability-routing", "dispatch", "governance", "witnessed-ledger"]
+authors = [{ name = "Hapax Research Lab", email = "hrl-han@hapaxresearch.com" }]
+keywords = ["sdlc", "agent-orchestration", "capability-routing", "dispatch", "governance", "witnessed-ledger"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -22,7 +22,7 @@ classifiers = [
 dependencies = ["pydantic>=2", "pyyaml>=6"]
 
 [project.urls]
-Homepage = "https://github.com/hapax-systems/hapax-spine"
+Homepage = "https://hapaxresearch.com"
 Repository = "https://github.com/hapax-systems/hapax-spine"
 
 [tool.hatch.build.targets.wheel]

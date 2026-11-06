@@ -1,19 +1,28 @@
 # Support
 
-`hapax-spine` is published by **Hapax Research Lab** for inspection, citation, and permitted Business Source License 1.1 use. Public repository affordances are not a staffed support queue.
+`hapax-spine` exposes a source-available runtime mechanism in the **Hapax Research Lab** portfolio. Public repository affordances are for inspection and citation, not support intake.
 
 ## GitHub issues
 
-GitHub Issues are kept available only as a redirect surface. Blank issues are disabled; the issue chooser points readers to the appropriate boundary files instead of opening a support queue.
+GitHub Issues are kept available only as a redirect surface. Blank issues are disabled; the issue chooser points readers to the published boundary files instead of opening a support queue.
 
 ## What is in scope
 
-- Reading and inspecting the repository, mechanisms, and metadata.
+- Reading the repository and its rendered metadata.
 - Citing the repository through `CITATION.cff` and `.zenodo.json`.
-- Reporting a concrete security disclosure or factual correction to `hrl-han@hapaxresearch.com` per `SECURITY.md`.
+- Reporting a concrete security disclosure or factual correction proposal to `hrl-han@hapaxresearch.com` (see `SECURITY.md` and https://hapaxresearch.com/about/#contact; the network commits to receipt, retention and published correction, and promises no response time).
 - Following the governance boundary through `GOVERNANCE.md` and https://github.com/hapax-systems/hapax-constitution.
 
 ## What is out of scope
 
 - Troubleshooting, integration help, feature requests, roadmap requests, or consulting through GitHub Issues.
-- Unsolicited pull requests, community maintenance, or contributor onboarding.
+- Pull requests, community maintenance, or contributor onboarding.
+- Claims that a funding link, citation, fork, or public issue creates support, feature priority, commercial rights, or license expansion.
+
+## Funding
+
+Funding links, if present, are no-perk research support only. Payment does not create an SLA, support entitlement, product commitment, license grant, or consulting relationship.
+
+---
+
+This file is rendered from `hapax-constitution/sdlc/render/`. Edits are overwritten on next render.

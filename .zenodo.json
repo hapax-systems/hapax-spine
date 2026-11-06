@@ -1,20 +1,18 @@
 {
   "title": "hapax-spine",
-  "version": "0.1.3",
-  "description": "Source-available runtime mechanism from Hapax Research Lab: append-only event ledgers, policy-backed routing, capability receipts, quota arithmetic, EDT measurement, and projections.",
+  "description": "Source-available runtime mechanism from Hapax Research Lab (BSL 1.1): append-only event ledgers, policy-backed routing, receipts, quotas, EDT, projections. The mechanism layer behind Reins; not a general-purpose lifecycle kernel.",
   "creators": [
     {
       "name": "Hapax Research Lab"
     }
   ],
-  "license": "other-open",
+  "license": "other-closed",
   "access_right": "open",
   "upload_type": "software",
   "keywords": [
     "governance",
     "sdlc",
-    "research-software",
-    "capability-routing"
+    "research-software"
   ],
   "related_identifiers": [
     {
@@ -26,6 +24,12 @@
       "identifier": "https://github.com/hapax-systems/reins",
       "relation": "isRequiredBy",
       "scheme": "url"
+    },
+    {
+      "identifier": "https://github.com/hapax-systems/hapax-constitution",
+      "relation": "isSupplementedBy",
+      "scheme": "url"
     }
-  ]
+  ],
+  "notes": "Repository license: Business Source License 1.1 (source-available, non-Open-Source until the Change Date converts the work to Apache-2.0; source inspection is open while competing hosted-service use remains reserved)."
 }
