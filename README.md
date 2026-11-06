@@ -1,12 +1,13 @@
 <!-- hapax-sdlc:preamble:begin -->
+<!-- hapax-public:surface=github.repo.hapax-spine.readme.preamble:begin -->
 
 # hapax-spine
 
-`hapax-spine` is a source-available runtime mechanism from **Hapax Research Lab** ([hapaxresearch.com](https://hapaxresearch.com)). It exposes append-only event ledgers, policy-backed routing, capability receipts, quota arithmetic, EDT measurement, and projections as inspectable mechanisms behind [reins](https://github.com/hapax-systems/reins).
+`hapax-spine` is a source-available runtime mechanism in the **Hapax Research Lab** portfolio ([hapaxresearch.com](https://hapaxresearch.com)). It exposes dispatch, receipt, quota, and projection machinery without claiming to be the whole Hapax estate.
 
 ## Reader promise
 
-Runtime mechanism package (`v0.1.3`) for append-only events, policy-backed routing, capability receipts, quota arithmetic, EDT measurement, and projections.
+Runtime mechanism package for append-only events, policy-backed routing, capability receipts, quota arithmetic, EDT measurement, and projections.
 
 ## Reader value
 
@@ -14,21 +15,28 @@ Separates the runtime mechanics behind Reins so dispatch, receipts, quotas, and 
 
 ## Claim ceiling
 
-Mechanism layer only; not a general-purpose lifecycle kernel and not yet fully taxonomy-injected across arbitrary external instances.
+Mechanism layer only; not the whole Hapax Research Lab estate and not yet fully taxonomy-injected across arbitrary external instances.
 
 ## License and rights
 
-Source-available under **Business Source License 1.1**; not open source until the Change Date converts the work to Apache-2.0. Self-hosted and non-competing production use is permitted by the Additional Use Grant; offering the licensed work as a competing hosted or managed service remains reserved. See [LICENSE](LICENSE).
+Source-available under Business Source License 1.1; not open source until the Change Date converts the work to Apache-2.0. Self-hosted and non-competing production use is permitted by the Additional Use Grant; offering the licensed work as a competing hosted or managed service remains reserved.
+
+Rendered summary: Business Source License 1.1 (source-available; not Open Source until the Change Date converts the work to Apache-2.0). See `LICENSE`, `NOTICE.md`, `CITATION.cff`, and `.zenodo.json` for the authority surfaces.
 
 ## Public boundary
 
-- Issues are redirect-only; no discussions and no unsolicited pull requests are accepted; see [CONTRIBUTING.md](CONTRIBUTING.md) and [SUPPORT.md](SUPPORT.md).
-- Security disclosures and factual correction proposals: [hrl-han@hapaxresearch.com](mailto:hrl-han@hapaxresearch.com) (see [SECURITY.md](SECURITY.md) and [hapaxresearch.com/about/#contact](https://hapaxresearch.com/about/#contact)).
-- Governance reference: [hapax-constitution](https://github.com/hapax-systems/hapax-constitution).
+- Issues are redirect-only; no discussions, no pull requests accepted; see `CONTRIBUTING.md` and `SUPPORT.md`
+- Published by **Hapax Research Lab** (`hrl-han`, [hapaxresearch.com](https://hapaxresearch.com)). Legal entity (as filed): Hapax Research LLC, organized in Wyoming on 2026-05-10, filing ID 2026-001973400.
+- Security disclosures and factual correction proposals: `hrl-han@hapaxresearch.com` (see `SECURITY.md` and [hapaxresearch.com/about/#contact](https://hapaxresearch.com/about/#contact)). The network commits to receipt, retention and published correction. It promises no response time.
+- Public copy uses `hapax-systems` organization links for first-party repositories; README text is orientation rather than a live runtime receipt.
+- Governance reference: https://github.com/hapax-systems/hapax-constitution
 
+## Portfolio position
+
+Source-available runtime mechanism consumed by Reins and Hapax Research Lab's internal research runtime. Not a general-purpose lifecycle kernel.
+
+<!-- hapax-public:surface=github.repo.hapax-spine.readme.preamble:end -->
 <!-- hapax-sdlc:preamble:end -->
-
-# hapax-spine
 
 `hapax-spine` (`0.1.3`) is the source-available runtime mechanism layer developed by **Hapax Research Lab** behind [reins](https://github.com/hapax-systems/reins) — turning an append-only stream of lifecycle events into scored, routable, receipted state.
 
@@ -46,11 +54,11 @@ The package is dependency-light (`pydantic`, `pyyaml`) and consumed by [reins](h
 
 ## Install
 
-```sh
-uv add hapax-spine        # or: pip install hapax-spine
-```
+Install directly from a pinned GitHub Release tag or download source/wheel archives from [GitHub Releases (`v0.1.3`)](https://github.com/hapax-systems/hapax-spine/releases):
 
-Current release: `v0.1.3` ([GitHub Releases](https://github.com/hapax-systems/hapax-spine/releases)).
+```sh
+uv add "git+https://github.com/hapax-systems/hapax-spine.git@v0.1.3"
+```
 
 ## Use
 
@@ -81,3 +89,7 @@ Set `HAPAX_SPINE_CONFIG_DIR` (and `HAPAX_SPINE_REPO_ROOT` when applicable) to yo
 ## License
 
 Source-available under the **Business Source License 1.1** (see [LICENSE](LICENSE)): free for self-hosted and non-competing production use under the Additional Use Grant, converting to Apache-2.0 on the Change Date (`2030-07-03`). Offering the work to third parties as a competing hosted or managed service is reserved.
+
+---
+
+*HACA-C v0.3.15, the lab's draft rule for labelling machine-made text, not an external certification. No request to a natural person to approve the final wording, and no such approval, was found in hrl-han's sending, review and coordination records when the text was released. hrl-han releases a text once its checking is complete, under a standing rule that hrl-han's principal, who is not named in this text, adopted before the text was drafted. Review record: https://hapaxresearch.com/review-record/ (open to anyone). This label records how the text was made; it does not certify that the text is true. An unaltered record can contain false claims or miss relevant events.*

@@ -19,8 +19,8 @@ MonetizationRisk = Literal["unknown", "none", "low", "medium", "high"]
 # Per `docs/superpowers/research/2026-04-23-content-source-registry-research.md`
 # §6.1 — five tiers, gated independently of monetization_risk:
 #
-#   tier_0_owned             — operator-owned, generated, hardware-captured
-#                              (oudepode catalog, wgpu shaders, studio cameras)
+#   tier_0_owned             — first-party generated or hardware-captured
+#                              (first-party catalog, wgpu shaders, studio cameras)
 #   tier_1_platform_cleared  — Storyblocks, Streambeats, YT Audio Library —
 #                              channel-whitelisted at the platform
 #   tier_2_provenance_known  — verified CC0 (Freesound hand-checked),
