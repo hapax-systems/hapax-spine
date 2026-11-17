@@ -84,7 +84,9 @@ REQUIRED_ROUTE_IDS = frozenset(
         "codex.headless.spark",
         "agy.review.direct",
         "glmcp.review.direct",
+        "glmcp.interactive.lane",
         "local_tool.local.gemma3_4b_reviewbench",
+        "local_tool.local.spark_narrow",
         "local_tool.local.worker",
         "vibe.headless.full",
     }
@@ -378,6 +380,7 @@ class Profile(StrEnum):
     SONNET = "sonnet"
     SPARK = "spark"
     GEMMA3_4B_REVIEWBENCH = "gemma3_4b_reviewbench"
+    SPARK_NARROW = "spark_narrow"
     WORKER = "worker"
 
 
@@ -435,10 +438,12 @@ class ModelId(StrEnum):
     GPT_OSS_120B = "gpt-oss-120b"
     COMMAND_R_08_2024 = "command-r-08-2024"
     GEMMA3_4B = "gemma3:4b"
+    QWEN3_8_FLASH_NEXT = "qwen3.8-flash-next"
     QWEN3_5_9B = "qwen3.5-9b"
     MISTRAL_MEDIUM_3_5 = "mistral-medium-3.5"
     GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview"
     GEMINI_4_ARGON = "gemini-4-argon"
+    GEMINI_4_CARBON = "gemini-4-carbon"
     GEMINI_3_5_FLASH = "gemini-3.5-flash"
     Z_AI_GLM_5 = "z_ai-glm-5"
     Z_AI_GLM_5_2 = "z_ai-glm-5.2"

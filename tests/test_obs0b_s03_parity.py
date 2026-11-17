@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from hapax.spine import platform_capability_registry as registry
 from test_obs0b_s02b_parity import TRUST
 
-REGISTRY_SHA = "8dd944b2b7101f0834e5a73537e701c17446f670c4becb2929688a555e3e82cc"
+REGISTRY_SHA = "b53f3ebd8ed925ce43188f24b63e20e9a62a700b56724918d3ee0f07b0c48a5d"
 SOURCE_SHA = "78eb2c5c2a5467058cf95883ed464ca36b98e37ddc218f6b444addf52925ef4c"
 
 LOAD = json.loads(r'''
@@ -64,7 +64,7 @@ POOL = json.loads(r'''
 }
 ''')
 
-CURRENT_IDS = ['api.headless.api_frontier', 'api.headless.openrouter', 'api.headless.provider_gateway', 'claude.headless.full', 'claude.headless.haiku', 'claude.headless.opus', 'claude.headless.sonnet', 'claude.review.opus', 'claude.interactive.full', 'kimi.interactive.lane', 'codex.headless.full', 'codex.headless.spark', 'agy.review.direct', 'glmcp.review.direct', 'local_tool.local.gemma3_4b_reviewbench', 'local_tool.local.worker', 'vibe.headless.full']
+CURRENT_IDS = ['api.headless.api_frontier', 'api.headless.openrouter', 'api.headless.provider_gateway', 'claude.headless.full', 'claude.headless.haiku', 'claude.headless.opus', 'claude.headless.sonnet', 'claude.review.opus', 'claude.interactive.full', 'kimi.interactive.lane', 'codex.headless.full', 'codex.headless.spark', 'agy.review.direct', 'glmcp.review.direct', 'glmcp.interactive.lane', 'local_tool.local.gemma3_4b_reviewbench', 'local_tool.local.spark_narrow', 'local_tool.local.worker', 'vibe.headless.full']
 
 
 def route(route_id="claude.headless.full", **changes):
@@ -369,7 +369,7 @@ def _current_registry(filename):
     with patch.dict(os.environ, {registry.PLATFORM_CAPABILITY_RECEIPT_DIR_ENV: "none"}):
         parsed = registry.load_platform_capability_registry(Path(filename))
     assert set(parsed.route_map()) == set(CURRENT_IDS)
-    assert len(parsed.routes) == 17 and len(parsed.omitted_capability_shapes) == 13
+    assert len(parsed.routes) == 19 and len(parsed.omitted_capability_shapes) == 37
     assert all(not x.demand_eligible and not x.route_ids for x in parsed.omitted_capability_shapes)
     for before, after in zip(payload["routes"], parsed.routes, strict=True):
         assert (before["route_id"], before["route_state"], before["blocked_reasons"]) == (
