@@ -34,6 +34,8 @@ QUALITY = {
     ("agy", "direct", "operator_session", "gemini-4-argon"),
     ("glmcp", "direct", "subscription", "z_ai-glm-5.2"),
     ("local_tool", "gemma3_4b_reviewbench", "local", "gemma3:4b"),
+    # Council #5573 (e64214d9): live route 18, local_tool.local.spark_narrow.
+    ("local_tool", "spark_narrow", "local", "qwen3.8-flash-next"),
 ])
 def test_current_registry_catalog(platform, profile, auth, model):
     assert registry.Platform(platform).value == platform
@@ -43,7 +45,8 @@ def test_current_registry_catalog(platform, profile, auth, model):
 
 
 @pytest.mark.parametrize("model", ["claude-opus-4-6", "claude-sonnet-5", "gpt-oss-120b",
-                                  "qwen3.5-9b", "gemini-3.5-flash", "z_ai-glm-5.3"])
+                                  "qwen3.5-9b", "gemini-3.5-flash", "z_ai-glm-5.3",
+                                  "gemini-4-carbon"])  # council #5838 (42d1a3ad)
 def test_additional_pinned_catalog_members(model):
     # Source catalog members, not assertions that these models are currently served.
     assert registry.ModelId(model).value == model
